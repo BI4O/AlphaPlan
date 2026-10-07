@@ -29,3 +29,7 @@ out/
 # 日志与临时文件
 *.log
 tmp/
+
+# agent 运行时产物（工作目录、会话、审计日志）
+workspace/
+data/
