@@ -2,18 +2,16 @@
   "name": "superbi4o",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*"
-  ],
+  "packageManager": "pnpm@12.6.0",
   "engines": {
     "node": ">=22.19.0"
   },
   "scripts": {
-    "start": "npm run start --workspace @superbi4o/server",
-    "dev:web": "npm run dev --workspace @superbi4o/web",
-    "build:web": "npm run build --workspace @superbi4o/web",
-    "test": "npm run test --workspace @superbi4o/server",
-    "selftest": "npm run selftest --workspace @superbi4o/server",
-    "typecheck": "npm run typecheck --workspace @superbi4o/server"
+    "start": "pnpm --filter @superbi4o/server start",
+    "dev:web": "pnpm --filter @superbi4o/web dev",
+    "build:web": "pnpm --filter @superbi4o/web build",
+    "test": "pnpm --filter @superbi4o/server test",
+    "selftest": "pnpm --filter @superbi4o/server selftest",
+    "typecheck": "pnpm --filter @superbi4o/server typecheck && pnpm --filter @superbi4o/web typecheck"
   }
 }

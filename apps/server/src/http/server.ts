@@ -4,14 +4,16 @@
  *
  * That last part is worth keeping deliberate: the panel data path calls `runBaw()` directly from a
  * route handler, so what the user sees on screen is never a model's summary of what it read.
+ *
+ * To add a route, add a branch in `handleApi` below. Everything is one process and one session in
+ * phase 1; multi-session routing is a phase 2 concern.
  */
 
-import { readFile, stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, resolve, sep } from "node:path";
-import type { WalletAgent } from "./agent.ts";
-import { runBaw } from "./baw.ts";
-import { readOnlyCommandCount } from "./policy.ts";
+import type { WalletAgent } from "../agent/session.ts";
+import { runBaw } from "../wallet/cli.ts";
+import { readOnlyCommandCount } from "../wallet/policy.ts";
+import { serveStatic } from "./static.ts";
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -19,8 +21,7 @@ export interface ServerOptions {
 	agent: WalletAgent;
 	port: number;
 	host: string;
-	/** Directory of the built web app. Undefined: serve a placeholder page instead. */
-	webRoot: string | undefined;
+	webRoot: string;
 }
 
 export interface RunningServer {
@@ -28,6 +29,7 @@ export interface RunningServer {
 	close(): Promise<void>;
 }
 
+/** The wire format the web app consumes. Keep in sync with apps/web/src/api.ts. */
 type ClientEvent =
 	| { type: "delta"; text: string }
 	| { type: "tool_start"; name: string }
@@ -36,21 +38,9 @@ type ClientEvent =
 	| { type: "settled" }
 	| { type: "error"; message: string };
 
-const CONTENT_TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8",
-	".js": "text/javascript; charset=utf-8",
-	".css": "text/css; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".svg": "image/svg+xml",
-	".png": "image/png",
-	".woff2": "font/woff2",
-	".map": "application/json; charset=utf-8",
-};
-
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
-	const payload = JSON.stringify(body);
 	response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-	response.end(payload);
+	response.end(JSON.stringify(body));
 }
 
 async function readBody(request: IncomingMessage): Promise<string> {
@@ -65,6 +55,7 @@ async function readBody(request: IncomingMessage): Promise<string> {
 	return Buffer.concat(chunks).toString("utf8");
 }
 
+/** Narrow pi's session events down to the handful the UI needs. */
 function toClientEvent(event: { type: string } & Record<string, unknown>): ClientEvent | undefined {
 	switch (event.type) {
 		case "message_update": {
@@ -85,33 +76,15 @@ function toClientEvent(event: { type: string } & Record<string, unknown>): Clien
 	}
 }
 
-async function serveStatic(response: ServerResponse, webRoot: string, urlPath: string): Promise<boolean> {
-	const root = resolve(webRoot);
-	const relative = urlPath === "/" ? "/index.html" : urlPath;
-	const target = resolve(root, `.${relative}`);
-	if (target !== root && !target.startsWith(root + sep)) return false;
-
-	try {
-		const info = await stat(target);
-		if (!info.isFile()) return false;
-		const body = await readFile(target);
-		response.writeHead(200, { "content-type": CONTENT_TYPES[extname(target)] ?? "application/octet-stream" });
-		response.end(body);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 const PLACEHOLDER = `<!doctype html>
 <meta charset="utf-8">
 <title>SuperBi4o agent</title>
 <body style="font:15px/1.6 system-ui;max-width:44rem;margin:4rem auto;padding:0 1rem">
 <h1>Agent server is running</h1>
 <p>The web app has not been built yet. Either start the Vite dev server:</p>
-<pre><code>npm run dev:web</code></pre>
+<pre><code>pnpm dev:web</code></pre>
 <p>or build it so this server can serve it:</p>
-<pre><code>npm run build:web</code></pre>
+<pre><code>pnpm build:web</code></pre>
 <p>API endpoints: <code>/api/state</code>, <code>/api/wallet/summary</code>,
 <code>/api/events</code> (SSE), <code>POST /api/prompt</code>, <code>POST /api/abort</code>.</p>
 </body>`;
@@ -136,11 +109,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
 		broadcast(mapped);
 	});
 
-	const handleApi = async (
-		request: IncomingMessage,
-		response: ServerResponse,
-		pathname: string,
-	): Promise<boolean> => {
+	const handleApi = async (request: IncomingMessage, response: ServerResponse, pathname: string): Promise<boolean> => {
 		if (pathname === "/api/health") {
 			sendJson(response, 200, { ok: true });
 			return true;
@@ -178,10 +147,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
 								: { ok: false as const, error: result.stderr || result.raw, exitCode: result.exitCode },
 						] as const;
 					} catch (error) {
-						return [
-							key,
-							{ ok: false as const, error: error instanceof Error ? error.message : String(error) },
-						] as const;
+						return [key, { ok: false as const, error: error instanceof Error ? error.message : String(error) }] as const;
 					}
 				}),
 			);
@@ -248,9 +214,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
 			const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 			try {
 				if (await handleApi(request, response, url.pathname)) return;
-				if (options.webRoot !== undefined && (await serveStatic(response, options.webRoot, url.pathname))) {
-					return;
-				}
+				if (await serveStatic(response, options.webRoot, url.pathname)) return;
 				if (url.pathname === "/" || url.pathname === "/index.html") {
 					response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
 					response.end(PLACEHOLDER);

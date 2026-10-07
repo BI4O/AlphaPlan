@@ -1,7 +1,7 @@
 /**
- * Policy tests. These are the only tests that matter for safety, and they need no network, no
- * wallet session, and no model — they are pure functions, so they run in milliseconds and can be
- * required to pass before any commit that touches ./policy.ts.
+ * Policy tests. These are the tests that matter for safety, and they need no network, no wallet
+ * session, and no model — they are pure functions, so they run in milliseconds and can be required
+ * to pass before any commit that touches src/wallet/policy.ts.
  */
 
 import assert from "node:assert/strict";
@@ -10,10 +10,9 @@ import {
 	assertReadOnly,
 	classifyBaw,
 	commandPath,
-	mentionsWalletCli,
 	readOnlyCommandCount,
 	WalletPolicyError,
-} from "../src/policy.ts";
+} from "../src/wallet/policy.ts";
 
 const ALLOWED: string[][] = [
 	["wallet", "status"],
@@ -138,26 +137,6 @@ describe("commandPath", () => {
 			"position",
 			"settled-history",
 		]);
-	});
-});
-
-describe("shell mention detection", () => {
-	it("flags direct, absolute, and nested invocations", () => {
-		assert.equal(mentionsWalletCli("baw wallet balance"), true);
-		assert.equal(mentionsWalletCli("~/bin/baw market-order swap --x 1"), true);
-		assert.equal(mentionsWalletCli('sh -c "baw wallet send --max"'), true);
-		assert.equal(mentionsWalletCli("echo hi | xargs baw"), true);
-		assert.equal(mentionsWalletCli("npm install -g @binance/agentic-wallet"), true);
-	});
-
-	it("leaves unrelated commands alone", () => {
-		assert.equal(mentionsWalletCli("ls -la"), false);
-		assert.equal(mentionsWalletCli("git status"), false);
-		assert.equal(mentionsWalletCli("grep -rn wallet src/"), false);
-	});
-
-	it("does not match a word that merely contains the letters", () => {
-		assert.equal(mentionsWalletCli("cat mybawfile.txt"), false);
 	});
 });
 

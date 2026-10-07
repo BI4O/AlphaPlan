@@ -1,0 +1,13 @@
+# pnpm workspace 的成员。注意：pnpm 只读这个文件，不看 package.json 的 `workspaces` 字段。
+packages:
+  - "apps/*"
+
+# pnpm 12 不执行依赖的安装脚本，并且要求每个带脚本的依赖被显式批准或拒绝，否则安装会以
+# ERR_PNPM_IGNORED_BUILDS 失败。这份名单是有意识的决定：每个 `true` 都是一段会在你的
+# 机器上执行的第三方代码。用 `pnpm approve-builds` 修改，不要手写。
+allowBuilds:
+  # Vite 需要它安放平台二进制
+  esbuild: true
+  # pi 的间接依赖，postinstall 对运行时没有必要
+  '@google/genai': false
+  protobufjs: false

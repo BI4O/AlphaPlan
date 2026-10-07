@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/index.ts",
     "test": "node --test test/*.test.ts",
-    "selftest": "node src/selftest.ts",
+    "selftest": "node src/dev/selftest.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

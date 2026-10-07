@@ -2,8 +2,8 @@
  * The wallet policy as instructions, injected as a context file (the same mechanism as AGENTS.md).
  *
  * This text is *not* the enforcement — ./policy.ts is. It exists so the model knows the boundary
- * instead of discovering it by being blocked, and so it explains the boundary to the user instead
- * of retrying.
+ * instead of discovering it by being blocked, and so it explains the boundary to the user instead of
+ * retrying. When you change one, change the other.
  */
 export const WALLET_POLICY_DOC = `# Wallet access in this session (phase 1: read-only)
 
