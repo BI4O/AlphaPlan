@@ -9,6 +9,21 @@ import { fileURLToPath } from "node:url";
 /** Repository root, derived from this file's location (apps/server/src/config.ts). */
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
+/**
+ * `.env` is loaded here rather than by a `--env-file` flag, so it works no matter which directory
+ * the process was started from (a pnpm workspace script, a bare `node src/index.ts`, a test).
+ *
+ * Node does not let this file override a variable that is already set, so
+ * `PORT=9000 pnpm start` still beats the file. That is the order you want when debugging, and it
+ * means CI can inject a secret without editing anything.
+ */
+const ENV_FILE = resolve(REPO_ROOT, "apps", "server", ".env");
+try {
+	process.loadEnvFile(ENV_FILE);
+} catch {
+	// No .env on a fresh checkout is the normal case, not an error.
+}
+
 export interface AgentConfig {
 	repoRoot: string;
 	/** The agent's working directory. It can write here, so it must not be this repository. */
@@ -30,6 +45,14 @@ export interface AgentConfig {
 }
 
 function text(name: string): string | undefined {
+	return envText(name);
+}
+
+/**
+ * Read an environment variable, treating `""` as unset. `.env` files make it very easy to write
+ * `BAW_BIN=` and mean "use the default", so every reader goes through here instead of `??`.
+ */
+export function envText(name: string): string | undefined {
 	const raw = process.env[name];
 	return raw === undefined || raw === "" ? undefined : raw;
 }

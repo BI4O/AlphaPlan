@@ -30,6 +30,25 @@ pnpm dev:web       # 终端 2：界面，http://localhost:5173
 
 模型来自 pi 自己的设置（本机解析到 `deepseek/deepseek-v4-pro`）；用 `AGENT_MODEL` 覆盖。
 
+## 配置：`.env`
+
+```bash
+cp apps/server/.env.example apps/server/.env
+```
+
+`.env` 已被 gitignore，只有 `.env.example` 入库（见 `.gitignore` 里的 `!.env.example`）。四条规则：
+
+- **位置固定**在 `apps/server/.env`，由 `config.ts` 用绝对路径加载（`process.loadEnvFile`），所以从
+  任何目录启动都生效——不依赖 `--env-file` 标志，也不依赖 cwd。
+- **优先级：真实环境变量 > `.env`**。Node 不会用文件覆盖已存在的变量，所以 `PORT=9000 pnpm start`
+  可以临时覆盖，调试时不用改文件；CI 也能直接注入密钥。
+- **空字符串等于未设置**：`BAW_BIN=`（空值）不会把 CLI 路径变成空串，配置层把 `""` 当未设置
+  （`config.ts` 的 `envText()`）。
+- **改端口只改一处**：前端开发服务器会从同一个 `.env` 读 `PORT` 并自动代理过去
+  （`apps/web/vite.config.ts`），也可以用 `AGENT_ORIGIN` 显式覆盖代理目标。
+
+本机 8787/8788 已被其它进程占用，所以 `apps/server/.env` 里目前用 **8789**。
+
 ## 目录结构
 
 ```
@@ -317,6 +336,8 @@ abort 自下而上）。它不支持 skill（要自己实现约 50 行：扫目�
 让模型用 `read` 读 `SKILL.md`），所以它适合出现在 **job 层**，而不是替换掉 agent 内核。
 
 ## 环境变量
+
+全部在 `apps/server/.env` 里设置（模板见 `.env.example`，规则见上一节）。
 
 | 变量 | 默认 | 说明 |
 |---|---|---|

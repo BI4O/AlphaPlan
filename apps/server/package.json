@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Local agent host: pi SDK session + read-only Binance Agentic Wallet access",
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/index.ts",
+    "start": "node src/index.ts",
     "test": "node --test test/*.test.ts",
     "selftest": "node src/dev/selftest.ts",
     "typecheck": "tsc -p tsconfig.json"

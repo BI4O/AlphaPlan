@@ -11,8 +11,9 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { createWalletAgent } from "./agent/session.ts";
+// config.ts first, on purpose: it loads `.env` as an import side effect.
 import { configWarnings, loadConfig } from "./config.ts";
+import { createWalletAgent } from "./agent/session.ts";
 import { startServer } from "./http/server.ts";
 
 const config = loadConfig();

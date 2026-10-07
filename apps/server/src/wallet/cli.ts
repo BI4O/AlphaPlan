@@ -16,14 +16,17 @@
 import { execFile } from "node:child_process";
 import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { REPO_ROOT } from "../config.ts";
+import { envText, REPO_ROOT } from "../config.ts";
 import { assertReadOnly, commandPath } from "./policy.ts";
 
-const BAW_BIN = process.env.BAW_BIN ?? "baw";
-const DEFAULT_TIMEOUT_MS = Number(process.env.BAW_TIMEOUT_MS ?? 30_000);
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-const AUDIT_LOG = process.env.BAW_AUDIT_LOG ?? resolve(REPO_ROOT, "data", "baw-audit.jsonl");
-const AUDIT_ENABLED = process.env.BAW_AUDIT_LOG !== "off";
+
+// Read lazily, not at module load: `../config.ts` loads `.env` as a side effect, and module
+// evaluation order would otherwise decide whether these see it.
+const bawBin = (): string => envText("BAW_BIN") ?? "baw";
+const defaultTimeoutMs = (): number => Number(envText("BAW_TIMEOUT_MS") ?? 30_000);
+const auditLogPath = (): string => envText("BAW_AUDIT_LOG") ?? resolve(REPO_ROOT, "data", "baw-audit.jsonl");
+const auditEnabled = (): boolean => envText("BAW_AUDIT_LOG") !== "off";
 
 export interface BawCallResult {
 	/** the argv actually executed, including `--json` */
@@ -99,13 +102,13 @@ function auditShape(argv: readonly string[]): string {
 }
 
 async function writeAudit(line: Record<string, unknown>): Promise<void> {
-	if (!AUDIT_ENABLED) return;
+	if (!auditEnabled()) return;
 	try {
-		await mkdir(dirname(AUDIT_LOG), { recursive: true });
-		await appendFile(AUDIT_LOG, `${JSON.stringify(line)}\n`, "utf8");
+		await mkdir(dirname(auditLogPath()), { recursive: true });
+		await appendFile(auditLogPath(), `${JSON.stringify(line)}\n`, "utf8");
 	} catch {
 		// A failed audit write must not fail a read, and must not be silent either.
-		console.error(`[wallet] could not append to the audit log at ${AUDIT_LOG}`);
+		console.error(`[wallet] could not append to the audit log at ${auditLogPath()}`);
 	}
 }
 
@@ -122,8 +125,8 @@ export async function runBaw(argv: readonly string[], options: { timeoutMs?: num
 	assertReadOnly(full); // before any process is created
 
 	const started = Date.now();
-	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-	const { stdout, stderr, exitCode } = await execFileAsync(BAW_BIN, full, timeoutMs);
+	const timeoutMs = options.timeoutMs ?? defaultTimeoutMs();
+	const { stdout, stderr, exitCode } = await execFileAsync(bawBin(), full, timeoutMs);
 	const durationMs = Date.now() - started;
 
 	const envelope = parseEnvelope(stdout);
