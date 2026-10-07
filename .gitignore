@@ -1,0 +1,31 @@
+# Git 工作树检出目录：只是同一份历史在其它分支上的视图，不需要记录
+.worktrees/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+
+# 环境变量与密钥
+.env
+.env.*
+!.env.example
+
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# 日志与临时文件
+*.log
+tmp/
