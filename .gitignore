@@ -20,6 +20,10 @@
 # 依赖
 node_modules/
 
+# Agent 工具的本地状态：属于机器/工具层面，不属于项目配置
+.claude/
+skills-lock.json
+
 # 构建产物
 dist/
 build/
