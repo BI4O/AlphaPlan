@@ -52,14 +52,22 @@ if (badBps.length === 0) {
   bad("R2", `bps 浮点未格式化：${[...new Set(badBps)].join(", ")}`);
 }
 
-// ---------- R3 「不一致」出现在哪 ----------
-const mismatchLines = text.split("\n")
-  .map((l, i) => ({ l: l.trim(), i }))
-  .filter(({ l }) => l === "不一致" || l.startsWith("不一致"));
-if (mismatchLines.length === 0) {
-  ok("R3", "页面上没有「不一致」（哈希自验通过）");
+// ---------- R3 哈希自验结论必须可判定 ----------
+// 上一版只判「页面里没有『不一致』」→ 在 lastNonce=0 的空环境里，
+// 页面显示「链上哈希未采集」，同样没有「不一致」，于是假绿 PASS。
+// 这正是「依赖当前恰好成立的状态」。改成三态：通过 / 失败 / 无法判定。
+// 注意：不能用 \b —— 中文不是 ASCII word char，\b一致\b 永远不匹配
+const hasMatch    = /哈希自验[\s\S]{0,60}?(^|\n)\s*一致\s*($|\n)/m.test(text) && !/不一致/.test(text);
+const hasMismatch = /不一致/.test(text);
+const notCollected = /链上哈希未采集|尚未计算|未采集/.test(text);
+if (hasMismatch) {
+  bad("R3", "哈希自验显示「不一致」");
+} else if (hasMatch) {
+  ok("R3", "哈希自验通过（显示「一致」且无「不一致」）");
+} else if (notCollected) {
+  warn("R3", "哈希自验未采集 —— 链上没有 PlanExecuted/Recorded 记录，本条未被真正检验");
 } else {
-  bad("R3", `页面出现「不一致」×${mismatchLines.length}（哈希自验失败）`);
+  bad("R3", "哈希自验区既无「一致」也无「未采集」—— 状态不明，需人工看页面");
 }
 
 // ---------- R4 外部钱包余额必须标注归属 ----------
