@@ -330,11 +330,16 @@ else
       # 关键：跨度小时它本来就会通过，所以「现在能过」不等于代码对。
       # 判据要能回答"环境跑久了会不会红"：直接测 300 块（>上游 200 限），
       # 这才反映真实上限，与当前 deployBlock 无关。
+      # 探测的是**会不会被拒**（看 error / 退出码），不是**有没有结果**。
+      # 两者必须分开：区间内无事件 → 空数组 + 退出 0（正常）；区间超限 → error + 退出非 0。
+      # 实测（14:11）：空结果 exit=0，超限 exit=1，且区间内**确有事件**时仍 exit=1。
       PROBE_FROM=$((N - 300))
-      if cast logs --address "$VAULT" --from-block "$PROBE_FROM" --to-block "$N" --json --rpc-url "$RPC_URL" >/dev/null 2>&1; then
-        ok E6c-d3 "探测 300 块跨度未被拒（上游限制 >300？实测异常，需人工确认）"
+      PROBE_OUT=$(cast logs --address "$VAULT" --from-block "$PROBE_FROM" --to-block "$N" --json --rpc-url "$RPC_URL" 2>&1)
+      PROBE_RC=$?
+      if [[ $PROBE_RC -ne 0 ]] || echo "$PROBE_OUT" | grep -qiE 'limited to|32614|32603|Fork Error|range'; then
+        bad E6c-d3 "300 块跨度被拒（rc=${PROBE_RC}）→ 上游硬限 200；当前 span=${SPAN} 块，超过 200 后页面必然空白"
       else
-        bad E6c-d3 "300 块跨度被拒 → 上游硬限 200；当前 span=${SPAN} 块，超过 200 后页面必然空白"
+        ok E6c-d3 "300 块跨度未被拒（rc=0，上游限制 >300，需人工确认）"
       fi
       # 单独报告：演示可用倒计时（span 距 200 还有多少块）
       if [[ "$SPAN" -lt 200 ]]; then

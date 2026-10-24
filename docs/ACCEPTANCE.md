@@ -19,6 +19,9 @@
 > 我把 11:58 的编译错误报成 12:10 的结论，而文件在 12:00–12:02 已修好 —— 工人差点去修一个不存在的错。
 > 快照一律标注采集时间；`FAIL` 不带当次输出 = 无效。
 >
+> **v2.10（14:11 采集）**：环境重建（DEPLOY_BLOCK 49500223）已复核 7 项全一致；E6c-1 按**净额口径**放宽并实跑闭合；
+> E6c-3③ 快照错位负向实做（差额 17,000,000）；E6c-d 探测逻辑改为**看 error/退出码**而非看有无结果（§2.14）。
+>
 > **v2.9（14:09 采集）**：前端已大规模落地并**主动 review**；发现 `eth_getLogs` 200 块硬限导致历史+对账必然空白（§2.13）；
 > E6c-1..3 记 SKIP 而非 PASS。已提交 7d8e805（82 files，contract 71 + backend 90 tests 全绿）。
 >
@@ -44,6 +47,51 @@
 > **假绿比漏检严重**（12:10 抓到的实例）：A14 曾用「硬编码旧签名 + `grep` 事件名」判定，
 > 合约加 `asOf`/`validUntil` 后脚本仍打 PASS 并显示旧 topic0。现已改为**从 ABI 抽签名算 topic0**，
 > 并做了负向测试（把期望改回旧签名 → 必须 FAIL 并打印源码 vs 期望）。**判定逻辑本身也要被验证。**
+
+---
+
+## 0. **当前环境（PM 重建 + onReport，2026-10-24 14:11 采集）**
+
+```
+VAULT_ADDRESS = 0x8f7a1defa8b06a8d66ea14a71a2ef2ce4ba1295b
+DEPLOY_BLOCK  = 49500223      ← 已从 49478393 重建
+RPC_URL       = http://127.0.0.1:8545
+CHAIN_ID      = 84532
+N (采集时)     = 49500228
+```
+
+**PM 报的 6 项，我逐个独立复核，全部一致：**
+
+| 项 | 链上实测 | PM 报的 |
+|---|---|---|
+| `totalAssets` | 19 990 733 | 19,990,733 ✅（注：PM 写 19,990,733，我读到 19990733） |
+| `totalSupply` | 20 000 000 | — ✅ |
+| USDC cash | 17 000 000 | 17e6 ✅ |
+| WETH | 809 095 192 231 808 | — ✅ |
+| `currentWethBps` | 1496 | 1496 ✅ |
+| `lastNonce` | 1 | 1 ✅ |
+| `PlanExecuted` 条数 | 1（tx `0xd33bfb3b…`, blk `0x2f35044`） | 1 条 ✅ |
+
+**E6c-1 在新环境上两条平衡式均闭合（差分净额口径，与前端实现同款）：**
+
+```
+USDC: balance(49500228) − balance(49500222) = 17 000 000 == Transfer.in − Transfer.out = 17 000 000  ✓
+WETH: balance(49500228) − balance(49500222) = 809 095 192 231 808 == 同值                              ✓
+```
+
+**E6c-3③ 快照错位负向测试已实做（14:11:37，只读 + 一个空块）：**
+
+```
+事件终点用 toBlock=49500224，余额读 latest=49500229
+  同一 N  → balance(49500224)−balance(49500222) = 0        == flows 0        ✓ 闭合
+  错位    → balance(49500229)−balance(49500222) = 17 000 000 vs flows 0     ✗ 差 17,000,000
+```
+
+→ 快照一致性**不是巧合**：一旦 `balanceOf` 用 latest 而 `getLogs` 用 `toBlock`，
+差额立刻等于期间那笔存款全额。这条负向测试能红，说明前端的「一个 N 用到底」是真做到的。
+
+> 注：为制造"新块已产生"的条件，我 `cast rpc anvil_mine` 挖了 **1 个空块**（无交易、不改任何状态、
+> 不触发 redeem/accrueFee）。这属于只读纪律的边界，记录在此以便 PM 核对。
 
 ---
 
@@ -457,6 +505,38 @@ balance(N) − balance(deployBlock−1) == Transfer.in − Transfer.out   （只
 
 ---
 
+### 2.14 E6c-d3 探测的是"会不会被拒"，不是"有没有结果"（14:11 实证）
+
+PM 问：「如果区间内没有事件，`cast logs` 返回空数组而不是报错，d3 会误判 PASS 吗？」
+
+**会 —— 如果判据写成"有输出就算过"。** 我实测了两种语义，并把判据改成看错误码而非看结果：
+
+| 情形 | 退出码 | 输出 |
+|---|---|---|
+| 区间内**无事件**（正常） | **0** | `[]`（空数组） |
+| 区间**超 200 块**（被拒） | **1** | `Error: … error code -32603: Fork Error … -32614 eth_getLogs is limited to a 200 range` |
+
+关键验证：**区间内确实有 3 条事件时，300 块跨度仍然退出码 1**（不是因为有事件才报错，
+而是因为跨度超限，与内容无关）。
+
+现在的判据：
+
+```
+PROBE_OUT=$(cast logs --address $VAULT --from-block $((N-300)) --to-block $N --json --rpc-url $RPC 2>&1)
+PROBE_RC=$?
+[[ $PROBE_RC -ne 0 ]] || echo "$PROBE_OUT" | grep -qiE 'limited to|32614|32603|Fork Error|range'
+```
+
+双保险：**退出码非 0** 或 **输出含错误关键字**，任一命中即判 FAIL。
+这样即使将来 `cast` 把错误写到 stdout 并退出 0，也不会漏。
+
+另外我验证了**分块方案本身有效**（不只是"代码里有 CHUNK 常量"）：
+
+```
+250 块直接查        → error -32603（被拒）
+250 块按 100 分 3 块 → ✓ 3 块全部成功
+```
+
 ## A. 合约（P1）—— `src/contract`
 
 | # | 检查 | 命令 / 判据 | 手工 |
@@ -555,9 +635,9 @@ balance(N) − balance(deployBlock−1) == Transfer.in − Transfer.out   （只
 | **E5** | **负向测试（4 个篡改，必须 ✗ 且不白屏）** | ① 改文件一个字节 → ①✗ ② 改 `asOf` → ②✗ ③ 改 `validitySeconds` → ③✗ ④ 改一个 `promptTemplateSha` → ④✗。任一情况页面其余区块照常渲染 | ✓ |
 | E6 | 计划历史（策略流） | 每条含 目标 vs 实际、偏离、tx 链接；`PlanRecorded`（未交易）也要出现并标注"未交易" | ✓ |
 | **E6b** | **两条流分开渲染 + `LiquiditySold` 是渲染列不是 tooltip** | ① 历史区有**可视化分区**（两个分区标题或一条 `category` 列），不是同一张表里换个颜色；② `LiquiditySold` 行的 `category` **必须渲染出来**且文案明确为「流动性调整（非计划交易）」—— 在 tooltip / 折叠面板 / hover 里才可见 = FAIL（截图时看不见，评委抓的就是这个）；③ 该行显示 `wethIn` / `usdcOut` / `shares` / 块号 / tx 链接（5 项，缺一即 FAIL）；④ **数据来源按 PM 裁定**：从 `redeem` 那笔 tx 的 receipt logs 里 decode `LiquiditySold`，**不额外发 RPC** —— 我验时会核对 Network 面板：历史区加载不应产生 per-tx 的额外 `eth_getLogs`/`eth_getTransactionReceipt` 请求风暴 | ✓ |
-| **E6c-1** | **硬对账（差分 + 快照一致 + 归类不重复）** | 两条恒等式，`Δ` **必须是差分**，且**每个 Transfer 只能进一个口袋**：<br>`balance(N) − balance(deployBlock−1) == ΣdepositAssets − ΣwithdrawAssets − Σbuy.usdcIn + Σsell.usdcOut + ΣLiquiditySold.usdcOut`<br>`balanceWETH(N) − balanceWETH(deployBlock−1) == Σbuy.wethReceived − Σsell.wethIn − ΣLiquiditySold.wethIn`<br>① **禁止** `in−out == balance`（期初非 0 必假红，§2.10）；② **快照一致性**：一次请求先 `getBlockNumber() → N`，`getLogs.toBlock`、`balanceOf.blockTag`、UI 显示三处同用 `N`；③ UI 显示**两个端点块号**；④ **归类必须按事件归类、不能按"所有 Transfer"归类**：`to==vault` 的 USDC Transfer 里既有存款也有 swap 到手，必须**只统计带 `PlanExecuted`/`LiquiditySold` 的那笔 tx**，否则存款被算两次（§2.11 实测 20,000,000 量级）；⑤ 严格相等，不等时显示差额数值 + 块号区间 | ✓ |
+| **E6c-1** | **硬对账（差分净额口径）** | 两条平衡式（**按实现的净额口径判**，不要求"只统计 swap tx"）：<br>`balance(N) − balance(deployBlock−1) == Transfer.in − Transfer.out`（只算 `from/to == vault`，`topic0==Transfer`）<br>USDC 与 WETH 各一条，**均须严格相等**。① 差分，禁止 `in−out==balance`；② **快照一致性**：一个 `N` 用到底（`getLogs.toBlock`、`balanceOf.blockNumber`、UI 显示三处同源）；③ UI 显示两个端点块号；④ 不等时显示差额数值+块号区间。<br>**为什么放宽**：净额口径每条 Transfer 只数一次，**天然免疫存款双计**，比"按事件分类求和"更稳（PM 14:10 验证实现并认可） | ✓ |
 | **E6c-2** | **解释层（不是判定依据）** | 分项显示 价格效应 / 期间费用 / 已实现滑点；端点 feed 陈旧时显示「无法估值对账」+ **缺哪个源**（哪个 feed、age 多少）；**不得出现"通过/不通过"字样**——它是解释，不是判据。任何把它渲染成绿勾/红叉的实现 = FAIL | ✓ |
-| **E6c-3** | **四条负向测试（必须都能红）** | ① 改一笔 `LiquiditySold.usdcOut` → 非零差额；② **删掉一条 `Deposit`** → 闭合破坏；③ **把一条 `Deposit` 的金额同时计入存取侧与 swap 收到侧** → 必须显示非零差额（专验 §2.11 重复计算）；④ **快照错位**：`balanceOf` 去掉 blockTag 而 `getLogs` 仍用 `N`，中间插一笔交易 → 闭合破坏（专验 §2.10 的 `N` 一致性）。**四条任一仍显示闭合 = FAIL** | ✓ |
+| **E6c-3** | **四条负向测试（必须都能红）** | ① 改一笔 `LiquiditySold.usdcOut` → 非零差额；② **把同一条 Transfer 的金额同时计入 `in` 和 `out`** → 必须不闭合（净额口径下这才是有效的"双计"用例；"删掉 Deposit 事件"对它不适用）；③ **快照错位**：`balanceOf` 用 `latest` 而 `getLogs` 用 `toBlock` → 必须不闭合；④ 分块失效：把 `LOG_CHUNK` 调到 >300 → 大跨度必然被上游拒（E6c-d3 已覆盖）。**四条任一仍显示闭合 = FAIL** | ✓ |
 | E7 | 无越界承诺 | 不暗示钱包连接/申赎表单/图表/自动轮询（PRD §13）；不出现"保证收益"类措辞 | ✓ |
 
 ## F. 文档与交付（P6）
