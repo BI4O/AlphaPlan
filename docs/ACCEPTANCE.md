@@ -19,6 +19,9 @@
 > 我把 11:58 的编译错误报成 12:10 的结论，而文件在 12:00–12:02 已修好 —— 工人差点去修一个不存在的错。
 > 快照一律标注采集时间；`FAIL` 不带当次输出 = 无效。
 >
+> **v2.18（14:55 采集）**：D7 反重放两条实测通过（`BadNonce(2,1)` / `PlanAlreadyExecuted`，状态无残留）；
+> E6b/E6c-1 PASS；**E3/E4 FAIL 根因是环境里有两份计划文件**（§2.21，P2 数据卫生问题，不是前端 bug）。
+>
 > **v2.17（14:49 采集）**：换端口复核完成；修掉我自己的 R3 假绿（改成 通过/失败/未采集 三态，§2.20）；
 > 发现块时间差 −41s 且扩大（演示前需 mine）。闸门 **PASS 53 / FAIL 0**。
 >
@@ -764,6 +767,58 @@ probe 文件不该进仓库。若 PM 决定保留，则加排除的同时必须�
 
 **正式套件已从 71 → 74 passed**（新增 `P0_MaxViewsDoNotRevertOnStaleFeed`、
 `P0_LastHolderCanFullyRedeem`、`P0_MaxThenRemainderIsNotStuck`）。
+
+### 2.21 D7 反重放实测通过（PM 授权，14:53）；E3/E4 因**两份计划文件**而 FAIL
+
+#### D7：两把锁各自独立生效
+
+| 用例 | 构造 | 结果 |
+|---|---|---|
+| **D7-A** 同 nonce 重复提交 | `nonce=1` + 新 planHash | revert `BadNonce(2, 1)`，选择器 `0xa4c98472` |
+| **D7-B** 正确 nonce 但复用已执行 planHash | `nonce=2` + `0x2b91f9d0…` | revert `PlanAlreadyExecuted(0x2b91f9d0…)`，选择器 `0x2f091853` |
+
+**状态无残留**（测前/测后逐项相同）：`lastNonce` 1→1、`lastExecutedAt` 1792824712→同、
+`lastPlanHash` 同、`totalAssets` 19,993,881→同、`planUsed(重放用的新 hash)` = false。
+
+#### E3/E4 FAIL 的根因：环境里有两份计划文件
+
+```
+06:49:13Z  2420 B  target=1000  keccak 0x2b91f9d0…  mtime 14:50:23  ← 链上执行的是这份
+06:50:32Z  2503 B  target=0     keccak 0xe12722f5…  mtime 14:51:23  ← 多出来的
+```
+
+`readLatestPlan()` 取 **planId 最大** → `06:50:32Z`（target 0）；
+链上 `lastPlanHash` 是 `06:49:13Z`（target 1000）→ `fileHash ≠ onchainHash` → 页面显示「不一致」。
+
+页面实测：本轮裁决 **0 bps**（不是 1000）、较算术均值 **−1500 bps**、哈希自验 **不一致**、
+侧栏 planId `06:50:32Z`、副标题同时显示 `0x2b91f9…ae3a · 2503 B` ——
+**2503B 是后者的、0x2b91f9 是前者的，页面把两份文件混在一格里了。**
+
+**这不是 frontend 的 bug，是 P2 的数据卫生问题**：`plans/` 被当作"证据目录"长期保留，
+每次 `debate` 又写新文件，于是"最新文件"与"链上最后一次执行"必然随时间分叉。
+
+三种处置（**产品决策，我不替选**）：
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| A | 每次演示前清空 `plans/`，只留将被执行的那份 | 最简单，牺牲"历史证据" |
+| B | 前端按链上 `lastPlanHash` 反查对应文件；找不到时显示"该次执行的文件已不在 plans/" | 主徽章永远对着链上那次执行 |
+| C | 保留现状，但**分别标注**每份来源，不能混在一格 | 多余文件可见但不误导 |
+
+我倾向 **B + C**：B 让主徽章永远可信，C 让多余文件不再污染同一格。
+
+#### E6b / E6c-1 不受影响，PASS
+
+```
+策略交易 1 笔：49513278 / 买入 WETH / +2.000000 / 1000 → 997 bps / 0x2b91f9…ae3a
+流动性调整 0 笔：「本期 0 笔 · 正常」+「未发生『赎回超过现金』…」
+对账：闭合。USDC balance(49513278) − balance(49513272) == Transfer.in − out；WETH 同
+表题：「每行对应一次链上计划事件：PlanExecuted（已成交）或 PlanRecorded（容差内未交易）」
+```
+
+#### 渲染闸门 R3 现在正确报 FAIL
+
+抓到「不一致」即 FAIL —— **说明上一轮修的三态判定生效了**（以前这里会假绿 PASS）。
 
 ## A. 合约（P1）—— `src/contract`
 
