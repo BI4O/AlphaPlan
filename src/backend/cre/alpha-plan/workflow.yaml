@@ -1,0 +1,37 @@
+# ==========================================================================
+# AlphaPlan workflow targets.
+#
+#   local-simulation    read + gate + log only (no report, no write)
+#   staging-settings    production path, local anvil fork
+#   production-settings production path, same values
+#
+# deployment-registry stays the CLI-supported literal "private" for all three:
+# this demo never deploys to a registry.
+# ==========================================================================
+local-simulation:
+  user-workflow:
+    workflow-name: "alpha-plan-local-simulation"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.local-simulation.json"
+    secrets-path: ""
+
+staging-settings:
+  user-workflow:
+    workflow-name: "alpha-plan-staging"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.staging.json"
+    secrets-path: ""
+
+
+production-settings:
+  user-workflow:
+    workflow-name: "alpha-plan-production"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.production.json"
+    secrets-path: ""

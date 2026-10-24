@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T04:13:20Z",
+  "asOf": 1792815200,
+  "validitySeconds": 900,
+  "degraded": true,
+  "input": {
+    "ethUsd": 2378.83,
+    "ethUsd24hPct": -1.1253,
+    "btcUsd": 80857.79,
+    "btcUsd24hPct": -1.0684,
+    "vault": {
+      "navUsdc": 0,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 1000,
+      "confidence": 0.2,
+      "reason": "Both majors are down ~1% (ETH -1.13% to $2378.83, BTC -1.07% to $80857.79) and the vault has zero NAV with 0 bps in WETH, so there is no capital or momentum to justify a large risk position. I would only build toward a modest 10% WETH allocation once NAV is funded, keeping dry powder until a clearer uptrend appears."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 2000,
+      "confidence": 0.55,
+      "reason": "Both majors are soft with ETH -1.13% and BTC -1.07% over 24h, a mild but broad risk-off tilt that argues for keeping WETH exposure light near 20% rather than pressing the 60% cap. With vault NAV at 0 USDC and wethBps at 0, there is no reason to rush capital into a declining tape."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.7,
+      "reason": "Vault navUsdc is 0 with wethBps at 0, so there is no position or liquidity buffer to manage, and adding WETH exposure into a -1.13% ETH / -1.07% BTC 24h tape would only introduce risk without capital to support redemptions."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 0,
+    "confidence": 0.7,
+    "rationale": "I set targetWethBps to 0 because the vault has zero NAV and no existing WETH position, so any allocation would create unsupported risk. This differs from the raw weighted mean (~897 bps) because that ignores the zero-capital constraint."
+  }
+}

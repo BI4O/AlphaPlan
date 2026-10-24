@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T04:16:07Z",
+  "asOf": 1792815367,
+  "validitySeconds": 900,
+  "degraded": true,
+  "input": {
+    "ethUsd": 2378.83,
+    "ethUsd24hPct": -0.9638,
+    "btcUsd": 80857.79,
+    "btcUsd24hPct": -0.9598,
+    "vault": {
+      "navUsdc": 0,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 2000,
+      "confidence": 0.3,
+      "reason": "ETH is down 0.96% to $2,378.83 and BTC down 0.96% to $80,857.79 — a synchronized risk-off move with no relative-strength signal favoring WETH, so there is no data-driven case to press exposure. With vault NAV at $0 USDC and wethBps at 0, I would only build a modest ~20% WETH position once capital actually exists, keeping dry powder while both majors are still falling."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.4,
+      "reason": "Both majors are down about 1% in 24h (ETH -0.96% to $2378.83, BTC -0.96% to $80857.79) with no ETH-specific outperformance, and the vault holds 0 WETH against 0 USDC NAV, so there is no cost to staying light. This is a mild risk-off signal rather than a breakdown, so I'd hold a below-neutral 30% WETH allocation until momentum stabilizes."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.95,
+      "reason": "Vault NAV is 0 USDC with 0 bps WETH, and both ETH (-0.96%) and BTC (-0.96%) are down over 24h, so there is no liquidity buffer to justify any WETH exposure."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 0,
+    "confidence": 0.95,
+    "rationale": "The risk agent's 0% allocation is strongly supported by the vault having 0 NAV and the degraded/unconfigured state; positive targets from bull and bear ignore that no capital exists. I override the raw mean (~1091 bps) to prevent any exposure when the plan must not be executed."
+  }
+}

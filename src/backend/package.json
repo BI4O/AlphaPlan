@@ -1,0 +1,23 @@
+{
+  "name": "alpha-plan-backend",
+  "module": "src/debate.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "debate": "bun --env-file=../../.env src/debate.ts",
+    "verify": "bun --env-file=../../.env src/verify.ts",
+    "typecheck": "bun check",
+    "test": "bun test",
+    "serve:plans": "bun src/serve-plans.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "viem": "^2.57.10",
+    "zod": "^4.6.7"
+  }
+}

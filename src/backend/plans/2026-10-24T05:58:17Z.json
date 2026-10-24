@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T05:58:17Z",
+  "asOf": 1792821497,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3697.71,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.9126,
+    "vault": {
+      "navUsdc": 19.9831,
+      "wethBps": 2994
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 4200,
+      "confidence": 0.62,
+      "reason": "ETH is up 5.26% over 24h while BTC is down 2.91%, an ~8pt relative-strength rotation that argues for adding to the current 2994 bps WETH weight. I scale up only to 4200 rather than the 6000 cap because BTC weakness could be an early risk-off signal for the whole complex and NAV is small at $19.98."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 2200,
+      "confidence": 0.62,
+      "reason": "ETH is up 5.26% while BTC is down 2.91%, a divergent rally that looks fragile rather than broad risk-on; trim WETH from 2994 bps toward 2200 bps to reduce exposure."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 2400,
+      "confidence": 0.7,
+      "reason": "ETH is up 5.26% while BTC is down 2.91% over 24h, signaling elevated cross-asset volatility; with vault NAV only 19.98 USDC and WETH at 2994 bps, I would cut exposure to 2400 bps to preserve redemption cash."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 2400,
+    "confidence": 0.68,
+    "rationale": "The confidence-weighted mean is about 2911 bps, but the risk agent has the highest confidence and a credible small-NAV preservation case; I break toward risk and set 2400 bps rather than averaging with the bull's relative-strength call."
+  }
+}

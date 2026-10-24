@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T05:57:17Z",
+  "asOf": 1792821437,
+  "validitySeconds": 900,
+  "degraded": true,
+  "input": {
+    "ethUsd": 3697.71,
+    "ethUsd24hPct": 0,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": 0,
+    "vault": {
+      "navUsdc": 19.9831,
+      "wethBps": 2994
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 3200,
+      "confidence": 0.33,
+      "reason": "ETH and BTC are both exactly flat over 24h (0.0% each) at $3,697.71 and $80,788.48, so there is no momentum evidence for a large shift, and the vault already holds a reasonable 2,994 bps in WETH against a $19.98 NAV. With no signal either way I'd only nudge slightly above current weight toward 3,200 bps rather than chase a bigger position."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.35,
+      "reason": "With ETH flat at $3697.71 (0% 24h) and BTC flat at $80,788 (0% 24h), there is no momentum signal to justify holding the current 2994 bps WETH weight, and ETH's weak ratio to BTC (~0.0458) argues for trimming exposure. A modest cut to 2500 bps keeps meaningful upside participation while raising cash in a vault of only $19.98 NAV where a single adverse move matters proportionally."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.6,
+      "reason": "With 0% 24h change in ETH and BTC, volatility is low, but the vault's small $19.98 NAV and 29.94% WETH allocation suggest trimming to 25% to preserve redemption liquidity."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 2500,
+    "confidence": 0.65,
+    "rationale": "The bull's proposed increase lacks support from the degraded 24h data, while the bear and risk agents agree on trimming to 2500 bps; the risk agent's higher confidence and small-vault liquidity argument dominate. This is below the raw mean of 2733 because the bull's tepid nudge is heavily discounted."
+  }
+}

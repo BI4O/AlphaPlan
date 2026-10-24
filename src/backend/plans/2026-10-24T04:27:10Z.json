@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T04:27:10Z",
+  "asOf": 1792816030,
+  "validitySeconds": 900,
+  "degraded": true,
+  "input": {
+    "ethUsd": 3697.93,
+    "ethUsd24hPct": 0,
+    "btcUsd": 80857.79,
+    "btcUsd24hPct": 0,
+    "vault": {
+      "navUsdc": 19.9831,
+      "wethBps": 2994
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 3400,
+      "confidence": 0.42,
+      "reason": "Both ETH ($3,697.93) and BTC ($80,857.79) are flat at 0% over 24h, so there is no momentum signal to justify a large risk increase, but with no drawdown and WETH already at 2994 bps (30%) of the $19.98 NAV, a modest tilt to 34% preserves upside exposure without overreaching."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.4,
+      "reason": "Both ETH ($3,697.93) and BTC ($80,857.79) show exactly 0% 24h change, so there is no momentum confirmation to justify pressing risk above the current 2994 bps WETH allocation in a $19.98 NAV vault. I would trim modestly toward 2500 bps to hold dry powder, but the flat tape does not support an aggressive de-risking call."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.55,
+      "reason": "With ETH at $3697.93 and BTC at $80857.79 both showing 0% 24h change, there is no volatility signal to justify the current 2994 bps WETH exposure, and the vault's $19.98 NAV offers no meaningful buffer against a sudden drawdown. Trimming toward 2500 bps keeps more USDC available for redemptions while retaining moderate upside."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 2500,
+    "confidence": 0.55,
+    "rationale": "My number differs from the raw confidence-weighted mean because the flat 0% 24h change provides no support for the bull's proposed increase; the risk and bear agents both target 2500 and the risk agent has the highest confidence, so I adopt 2500."
+  }
+}

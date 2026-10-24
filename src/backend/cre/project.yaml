@@ -1,0 +1,27 @@
+# ==========================================================================
+# AlphaPlan CRE project settings.
+#
+# The demo chain is an anvil fork of Base Sepolia (chainId 84532), so every
+# target points at http://127.0.0.1:8545. localhost RPC needs no
+# --allow-insecure-rpc; that flag is for non-local public-internet endpoints.
+#
+# chain-name is the CRE selector name, not a generic network label — it decides
+# which chain-selector the workflow resolves in getNetwork().
+# ==========================================================================
+staging-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia-base-1
+      url: http://127.0.0.1:8545
+
+production-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia-base-1
+      url: http://127.0.0.1:8545
+
+# Receiver-free local simulation: same chain, same RPC, no broadcast. The
+# workflow's local branch reads the vault and the feed, then refuses to build a
+# report or an EVM write.
+local-simulation:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia-base-1
+      url: http://127.0.0.1:8545

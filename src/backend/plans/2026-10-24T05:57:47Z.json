@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T05:57:47Z",
+  "asOf": 1792821467,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3697.71,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": 5.2632,
+    "vault": {
+      "navUsdc": 19.9831,
+      "wethBps": 2994
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 3800,
+      "confidence": 0.55,
+      "reason": "ETH is up 5.26% over 24h to $3697.71 with BTC confirming the same +5.26% move to $80788.48, a broad risk-on signal that justifies raising WETH from the current 2994 bps toward 3800 bps. But with only one day of momentum data and identical ETH/BTC percentage moves (suggesting a single beta-driven tape rather than ETH-specific strength), I keep the increase modest and confidence moderate."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 2200,
+      "confidence": 0.55,
+      "reason": "ETH and BTC both jumped 5.26% in 24h, a sharp correlated spike that historically invites mean-reversion, so trimming from the current 2994 bps toward 2200 bps locks in some of the rally's gains. With only $19.98 NAV and no other negative data, this is a modest de-risking rather than a full exit."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.72,
+      "reason": "ETH and BTC both moved +5.26% in 24h, signaling elevated reversal/drawdown risk, so I would trim the current 2994 bps WETH allocation toward 2500 bps. With vault NAV only 19.9831 USDC, keeping more cash better protects redemption capacity."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 2700,
+    "confidence": 0.62,
+    "rationale": "The raw confidence-weighted mean is about 2802 bps, but the risk agent has the highest confidence and its concern about the tiny $19.98 vault NAV is directly supported by the data, so I shade the final allocation lower to 2700 bps."
+  }
+}
