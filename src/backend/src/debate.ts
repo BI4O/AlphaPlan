@@ -24,6 +24,8 @@ import {
 import { LLM_TEMPERATURE, completeJson, errorMessage, llmFromEnv, type LlmConfig } from "./llm.ts";
 import { readChainTime, readMarket } from "./market.ts";
 import {
+  archiveCurrentPrompts,
+  findPromptByHash,
   loadPromptTemplates,
   renderAgentUserMessage,
   renderJudgeUserMessage,
@@ -301,6 +303,15 @@ async function livePlan(args: Args): Promise<{ plan: Plan; chainNow: number }> {
   }
 
   const prompts = await loadPromptTemplates(args.promptsDir);
+  // 先用后归档的话，如果本次生成中途失败，新 prompt 就没进存档 ——
+  // 而计划文件可能已经写下它的哈希了。所以归档放在最前面，且不阻塞主流程：
+  // 归档失败只警告，不能让「生成计划」因为一个备份动作挂掉。
+  try {
+    const { added } = await archiveCurrentPrompts(args.promptsDir);
+    if (added.length > 0) console.log(`prompts archived: ${added.join(", ")}`);
+  } catch (error) {
+    console.error(`warning: could not archive prompts: ${errorMessage(error)}`);
+  }
   const snapshot = await readMarket({
     vaultAddress: args.vault ?? (process.env.VAULT_ADDRESS as `0x${string}` | undefined),
   });
@@ -498,27 +509,28 @@ export async function checkPlans(
       problems.push({ file: path, message: errorMessage(error) });
     }
 
-    // Provenance: the hashes must match the templates in this repository.
+    // Provenance: every recorded hash must resolve to prompt bytes we still hold.
+    //
+    // 这里**不再**拿计划里的哈希去比「当前 prompts/ 目录」。那样做的话，
+    // 一旦 prompt 被改写，所有历史计划立刻变成「不可复算」—— 实测踩过：
+    // 改四个 prompt 后 8 份历史计划红 32 项，而它们本身一个字都没错。
+    //
+    // 正确的问题不是「它是不是用当前 prompt 生成的」，而是
+    // 「它当时用的那份 prompt 原文，我们还能不能拿出来」。
+    // 所以按 hash 去 prompts/archive/ 反查（见 findPromptByHash 的说明）。
     if (prompts) {
-      for (const round of plan.rounds) {
-        const expected = prompts[round.agent]?.keccak256;
-        if (!expected) {
-          problems.push({ file: path, message: `no template prompts/${round.agent}.txt` });
-        } else if (round.promptTemplateSha.toLowerCase() !== expected.toLowerCase()) {
-          problems.push({
-            file: path,
-            message:
-              `${round.agent}.promptTemplateSha ${round.promptTemplateSha} != keccak256(${prompts[round.agent]!.path}) ${expected}`,
-          });
-        }
-      }
-      const judgeExpected = prompts.judge?.keccak256;
-      if (!judgeExpected) {
-        problems.push({ file: path, message: "no template prompts/judge.txt" });
-      } else if (plan.final.promptTemplateSha.toLowerCase() !== judgeExpected.toLowerCase()) {
+      const recorded: Array<{ label: string; sha: string }> = [
+        ...plan.rounds.map((r) => ({ label: `${r.agent}.promptTemplateSha`, sha: r.promptTemplateSha })),
+        { label: "final.promptTemplateSha", sha: plan.final.promptTemplateSha },
+      ];
+      for (const { label, sha } of recorded) {
+        if (await findPromptByHash(sha, promptsDir)) continue;
         problems.push({
           file: path,
-          message: `final.promptTemplateSha ${plan.final.promptTemplateSha} != keccak256(${prompts.judge!.path}) ${judgeExpected}`,
+          message:
+            `${label} ${sha} 找不到对应原文 —— ` +
+            `prompts/*.txt 与 prompts/archive/${sha}.txt 里都没有哈希等于它的文件。` +
+            `这份计划的 prompt 追溯链断了（改 prompt 时应把旧版归档到 archive/）。`,
         });
       }
     }

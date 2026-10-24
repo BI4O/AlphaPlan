@@ -241,7 +241,7 @@ lastFeeAccrual += periods × 30 days          // 余数保留，避免长期累�
 ## 4. 系统结构（按现有仓库）
 
 ```
-SuperBi4o/
+AlphaPlan/
 ├── docs/
 │   ├── PRD.md
 │   └── PLAN.md

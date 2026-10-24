@@ -632,3 +632,125 @@ if (planIdFromA !== planIdFromB) {
 | **8** | **同一视图里多个"当前"判定源** |
 
 它们的共同点：**没有单一真相源**。
+
+---
+
+# 改了 prompt，历史证据就失效了 —— 除非你做内容寻址
+
+**实例（2026-10-24 15:16）**：为了去掉 risk agent 里「你应当偏向保守」这条
+写死的立场，改了四个 prompt。改完后 `bun run debate --check` 红 32 项：
+
+```
+FAIL plans/2026-10-24T07:13:11Z.json:
+  bull.promptTemplateSha 0xceb2a196… != keccak256(prompts/bull.txt) 0x345570c2…
+```
+
+**那 8 份计划文件一个字都没错。** 错的是校验方式。
+
+## 根因
+
+计划文件记 `promptTemplateSha`（哈希），不记原文。校验时拿「当前 prompts/ 目录」
+去比，于是在 prompt 被改写的那一刻，所有历史计划的哈希都成了指向空气的指针。
+
+而「可复算」正是这个产品卖的东西 —— 这个 bug 动摇的是核心卖点，不是某个数字。
+
+## 规则：内容寻址，名字即校验和
+
+```
+prompts/archive/<keccak256>.txt
+```
+
+- 归档文件名 = 它自己的哈希
+- 校验时按 hash 反查，**不按 agent 名找当前版本**
+- 改 prompt 是**新增**一个归档，不是覆盖
+- 归档在**调 LLM 之前**做（计划可能已经写下新哈希，事后归档会在失败时留空洞）
+
+## 校验问题要问对
+
+```
+❌ 「这份计划是不是用当前 prompt 生成的？」  → 改 prompt 就全红
+✅ 「它当时用的那份原文，我们还能不能拿出来？」→ 永远能答
+```
+
+**第一条问的是「和现在一致吗」，第二条问的是「能不能复算」。**
+只有第二条是审计该问的问题 —— 审计不要求历史与现在相同，
+只要求历史可重建。
+
+---
+
+# `node:` 导入在这个仓会变成 `never` —— 因为 `module: "Preserve"`
+
+**症状**（2026-10-24，`src/backend`）：
+
+```
+src/prompts.test.ts(156,17): error TS2349: This expression is not callable.
+  Type 'never' has no call signatures.        ← mkdtempSync
+src/prompts.test.ts(173,5): error TS2349: ... ← readFileSync / existsSync
+```
+
+**只用 import 一个 `node:fs` 函数就会触发，与业务代码无关。**
+
+## 根因链（三级，缺一级都推不出来）
+
+```
+tsconfig: module: "Preserve"
+    ↓  强制要求（换成 node16 会报 TS5110「Option 'module' must be set to 'Node16'」）
+moduleResolution: "bundler"
+    ↓  bundler 模式下 TS 不解析 node: 前缀模块的 CJS 具名导出
+readFileSync / mkdtempSync 等被推成 never
+```
+
+实测对照（最小复现文件 `import { existsSync } from "node:fs"`）：
+
+| moduleResolution | TS2349 数量 |
+|---|---|
+| `bundler` | **9** |
+| `node16` | 0 |
+| `nodenext` | 0 |
+
+**所以这不是 TypeScript 7 的 bug，也不是 `@types/node` 版本不兼容。**
+在 `types: ["bun", "node"]` 里补 `node` 反而更糟（7 → 9 个错）。
+
+## 规则：测试里也用 Bun API
+
+```typescript
+// ❌ 会报 TS2349
+import { readFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// ✅ 这个仓的做法
+const dir = `${Bun.env.TMPDIR ?? "/tmp"}/probe-${process.pid}`;
+await Bun.write(`${dir}/a.txt`, "hello");          // 自动建父目录
+const found = await Bun.file(`${dir}/a.txt`).exists();
+const text = await Bun.file(`${dir}/a.txt`).text();
+const bytes = new Uint8Array(await Bun.file(p).arrayBuffer());
+```
+
+**`Bun.write` 自己创建缺失的父目录**，所以不需要 `mkdir`。
+`debate.ts` 的 `persist()` 早就这么写了（注释是「Bun.write creates missing
+parent directories; no node:fs needed」）—— 这个仓的约定一直是这样，
+只是新写的测试是第一个踩进 `node:fs` 的。
+
+## 为什么不改 tsconfig
+
+`module: "Preserve"` + `moduleResolution: "node16"` 直接报 TS5110 不合法。
+要改成 node16 就得连 `module` 一起换，影响全仓 20 个文件的解析行为 ——
+**为一个测试文件的 4 行导入动全仓配置，代价和收益不成比例。**
+
+## 这个坑的形态
+
+它不是「代码有 bug」，而是**工具链配置的一种隐含约束，只在特定写法下暴露**。
+和前面几例同一族：
+
+| # | 形态 |
+|---|---|
+| 7 | 探测方法本身有缺陷（`textContent` 不穿透 shadow root）|
+| 8 | 同一视图里多个「当前」判定源 |
+| 9 | 判据问错了问题（问「和现在一致吗」而非「能不能复算」）|
+| **10** | **判据依赖具体的实现形式**（grep 源码字面量，而不是验产物）|
+| **11** | **工具链的隐含约束**（配置组合导致某个 imports 不可用）|
+
+第 10 例是 reviewer 自己抓的：它原来 grep `debate.ts` 里 `promptTemplateSha`
+出现次数 ≥ 4，但实现重构成「1 处泛化写入 × 4 次调用」后只剩 3 次 → 假红。
+改成检查**实际产物**里有没有 4 处。

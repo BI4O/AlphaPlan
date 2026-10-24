@@ -1,37 +1,54 @@
-# SuperBi4o
+# AlphaPlan
+
+> 一个可审计的 AI 基金经理。**不承诺 AI 赚钱，承诺每个决策都能被第三方复算。**
+
+AI 决定买多少 ETH，把这个决定写成一份计划文件，文件的 keccak256 哈希上链。
+三个月后你打开那份文件、自己算一遍哈希 —— 对上了，就证明它当时确实是这么决定的；
+差一个字节，就证明有人改过。**没有「相信我」这一环。**
+
+```bash
+git clone <this-repo> && cd AlphaPlan
+bash src/contract/script/demo-up.sh        # 起链 + 部署 + 入金
+cd src/frontend/alpha-plan && pnpm dev     # → http://localhost:3000
+```
+
+---
 
 > ⚠️ **本 demo 是 L1/L2，不是 L3。DON 不会真的定时执行**
 > （`cre whoami` → `Deploy Access: Not enabled`）。`--broadcast` 发的确实是真交易、
 > 走真 forwarder→onReport，但**签名方是本地 CLI，不是 DON 共识**。
 > 详见 [诚实边界](#诚实边界8-条逐条都在限制一个对外承诺)。
 
-个人应用（personal app）的构建仓库 —— 用来打造我自己的应用。
-
-> **当前应用：** [AlphaPlan — 可审计的 AI 基金经理](#alphaplan--可审计的-ai-基金经理)
-> · 本地 anvil fork · 不承诺收益，只承诺可审计
-
-## 这个仓库是什么
-
-这里存放我个人应用的源码与设计资产。目标不是做一个通用框架或开源库，
-而是围绕我自己的使用场景，把想法逐步做成真正能用起来的产品。
-
-- 定位：个人项目，单人（或极小规模）开发与维护
-- 关注点：能跑起来、够用、好用，而不是覆盖所有边缘场景
-- 迭代方式：小步提交，按需重构
-
 ## 目录结构
 
 ```
-SuperBi4o/
-├── .agents/skills/   # 项目级 Agent Skills（随仓库走，会被提交）
-├── .claude/          # 其它 Agent 工具的安装残留，已忽略
-├── .worktrees/       # Git 工作树（worktree）目录，已忽略
-├── skills-lock.json  # 本地安装记录（哈希），已忽略
-├── README.md
-└── .gitignore
+AlphaPlan/
+├── src/
+│   ├── contract/          # Solidity：AlphaPlanVault（ERC-4626）+ Foundry 测试
+│   ├── backend/           # TypeScript：AI 辩论、计划文件生成、计划文件服务
+│   └── frontend/alpha-plan/  # Next.js：五屏控制台 + 钱包申赎
+├── docs/
+│   ├── PRD.md             # 产品设计
+│   ├── PLAN.md            # 实施计划
+│   └── ACCEPTANCE.md      # 验收口径（每一条都能机械判定）
+├── .qa/                   # 机械闸门与渲染闸门
+├── .agents/skills/        # 项目级 Agent Skills（随仓库走）
+└── AGENTS.md              # 开发约定与踩过的坑
 ```
 
-随着项目推进，具体的应用代码、子项目会陆续加入此仓库。
+## 三件套，各管一件事
+
+| 组件 | 职责 | 安全目标 |
+|---|---|---|
+| **合约** `AlphaPlanVault`（ERC-4626） | 持仓、算 NAV、执行 swap、强制风控 | **trustless** —— 不需要信任任何人 |
+| **CRE workflow** | 取计划、校验三道门禁、生成签名报告写链 | **traceable** —— 需要出处证明 |
+| **AI 辩论层**（链下） | bull / bear / risk 三个 agent 辩论，judge 裁决 | 可复算 —— 输出即证据 |
+
+**NAV 绝不由 CRE 报告。** 它由合约用「持仓 × Chainlink Data Feeds 价格」实时计算。
+否则报告与执行之间的时间差就是免费套利窗口。
+
+完整设计见 [`docs/PRD.md`](docs/PRD.md)，实施计划见 [`docs/PLAN.md`](docs/PLAN.md)，
+验收口径见 [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)。
 
 ## 关于 Git 工作树
 
@@ -136,56 +153,205 @@ npm install -g @binance/agentic-wallet@latest   # 需要 >= 1.11.0
 ```
 
 
-## AlphaPlan — 可审计的 AI 基金经理
+### 快速开始（三条命令，从零到能点）
 
-本仓库目前唯一的应用模块。**卖的不是收益，是出处证明**：
-
-> 我们不承诺 AI 赚钱。我们承诺：它的每一个决定，你都能自己算一遍。
-> 每一笔交易背后是一份「计划」文件 —— 三个 agent 的辩论记录 + judge 的裁决。
-> 文件原始字节的哈希写在链上。改一个字节，就对不上。
-
-完整设计见 [`docs/PRD.md`](docs/PRD.md)，实施计划见 [`docs/PLAN.md`](docs/PLAN.md)，
-验收口径见 [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)。
-
-### 架构（三件套，各管一件事）
-
-| 组件 | 职责 | 安全目标 |
-|---|---|---|
-| **合约** `AlphaPlanVault`（ERC-4626） | 持仓、算 NAV、执行 swap、强制风控 | **trustless** —— 不需要信任任何人 |
-| **CRE workflow** | 取计划、校验三道门禁、生成签名报告写链 | **traceable** —— 需要出处证明 |
-| **AI 辩论层**（链下） | bull / bear / risk 三个 agent 辩论，judge 裁决 | 可复算 —— 输出即证据 |
-
-**NAV 绝不由 CRE 报告。** 它由合约用「持仓 × Chainlink Data Feeds 价格」实时计算。
-否则报告与执行之间的时间差就是免费套利窗口。
-
-### 快速开始（本地 anvil fork）
+前提：`anvil` / `forge` / `cast` / `bun` / `pnpm` 都装好（见上面「依赖与环境」）。
 
 ```bash
-# 一条命令：起 fork + 部署 + 装 mock feed + 存 20 USDC + 打印地址
+# ① 起链：fork Base Sepolia + 部署金库 + 装 mock feed + 入金 20 USDC
 bash src/contract/script/demo-up.sh
-
-# 后端产出一次 AI 决策（真实调用 DeepSeek）
-cd src/backend && VAULT_ADDRESS=<上一步打印> RPC_URL=http://127.0.0.1:8545 bun run debate
-
-# 跑 CRE workflow（本地模拟，不写链）
-cd src/backend/cre && cre workflow simulate alpha-plan --target local-simulation \
-  --non-interactive --trigger-index 0
-
-# 验降级门禁：指向一份 degraded:true 的计划，应该拒绝写链
-cd src/backend/cre && cre workflow simulate alpha-plan --target local-simulation \
-  --config config.degraded.json --non-interactive --trigger-index 0
-# → degraded plan, refusing to write / wouldWrite: false
-
-# 前端
-cd src/frontend/alpha-plan && pnpm dev     # http://localhost:3000
 ```
 
-> **命令注意事项**
-> - `cre workflow simulate` 的 `--config` 用相对路径（相对 `cre/alpha-plan/`），
->   写成 `./alpha-plan/config.x.json` 会报 "ConfigPath must be a valid existing file"
-> - 不带 `--target` 且存在多个 target 时会报 "multiple targets found"
+**它会打印四个值，后面都要用**：
 
-### demo 剧本（净值上涨怎么演）
+```
+ RPC_URL=http://127.0.0.1:8545
+ VAULT_ADDRESS=0x……        ← 记住它
+ DEPLOY_BLOCK=495……        ← 记住它（anvil 每次重启这个数会变）
+ CHAIN_ID=31337
+```
+
+```bash
+# ② 前端：把上面两个值写进 .env.local，然后起服务
+cd src/frontend/alpha-plan
+#   VAULT_ADDRESS=<上一步的>
+#   DEPLOY_BLOCK=<上一步的>
+#   RPC_URL=http://127.0.0.1:8545
+#   CHAIN_ID=31337
+#   NEXT_PUBLIC_RPC_URL=http://127.0.0.1:8545
+#   NEXT_PUBLIC_CHAIN_ID=31337
+pnpm dev          # → http://localhost:3000
+```
+
+```bash
+# ③ 计划文件服务（可选，但 demo-report.sh 要用它挑「链上已执行的那份」）
+cd src/backend
+VAULT_ADDRESS=<同上> DEPLOY_BLOCK=<同上> RPC_URL=http://127.0.0.1:8545 \
+  bun src/serve-plans.ts     # → http://127.0.0.1:8788
+```
+
+**打开 http://localhost:3000，滚到最底部就是「演示操作」三步按钮。**
+
+> ⚠️ **`bun` 不自动读 `.env` —— 这一行不传环境变量就会 503。**
+>
+> ```
+> $ bun src/serve-plans.ts
+> serve:plans: VAULT_ADDRESS is required (used to read lastPlan/planUsed)
+> # 然后每个请求都返回 {"error":"chain unavailable …"}
+> ```
+>
+> 这是它故意的设计：没有 `VAULT_ADDRESS` 就无法判断「哪份计划是链上执行过的」，
+> 而静默退化成「取最新文件」正是要修掉的那个 bug。**宁可 503，也不猜。**
+
+---
+
+### demo 脚本：四个脚本各管一件事
+
+全部在 `src/contract/script/`，都是幂等的、可以随时重跑。
+
+| 脚本 | 做什么 | 改链上？ |
+|---|---|---|
+| `demo-up.sh` | 起 anvil fork + 部署 + 装 mock feed + 入金 | ✅ |
+| `demo-report.sh` | 把计划送上链（`onReport`） | ✅ |
+| `demo-bump-price.sh` | 把 ETH 价推高（oracle + 池子一起改） | ✅ |
+| `demo-snapshot.sh` | 打印关键值，`--before/--after` 出差值 | ❌ 只读 |
+
+#### `demo-up.sh` —— 起环境
+
+```bash
+bash src/contract/script/demo-up.sh                # 复用已有 anvil 与已部署的金库
+PORT=8545 RESET=1 bash src/contract/script/demo-up.sh   # 强制重新部署一个新金库
+```
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `PORT` | `8545` | anvil 监听端口 |
+| `RESET` | `0` | `1` = 忽略缓存，部署新金库 |
+| `DEPOSIT_USDC` | `20000000` | 初始入金（6 位小数，即 20 USDC） |
+| `CHAIN_ID_OVERRIDE` | `31337` | fork 拿真状态，chainId 覆盖成这个 |
+
+> **`RESET=1` 不会删掉旧金库。** 旧合约仍在链上、仍有代码、仍能读。
+> 实测踩过：同时存在 `0x8f7a…`（有执行记录）和 `0x6ee3…`（全新），
+> 两个都「合法」，下游指错了看不出来。脚本现在会在部署前警告旧地址还活着。
+
+#### `demo-report.sh` —— 送计划上链
+
+```bash
+bash src/contract/script/demo-report.sh
+```
+
+它是**演示里最关键的一步**，做五件事并逐条打印：
+
+1. 从 `/latest.json` 取计划（后端没起就退回 `plans/` 里最新的一份）
+2. 校验：`degraded` 必须 `false`、声明的时效必须还在窗口内、`planHash` 不能已执行过
+3. `keccak256(原始字节)` → 这就是报告里的 `planHash`
+4. 发 `onReport`，过合约三道门禁（degraded → planUsed → nonce）
+5. **回读** `lastPlanHash` 与 `lastNonce`，证明真的上链了
+
+> ⚠️ **这一步用 `anvil_impersonateAccount` 假扮 CRE forwarder。**
+> 真实部署里这笔交易由 Chainlink DON 的 forwarder 合约签发，私钥在 DON 里。
+> 本地没有 DON，所以用 anvil 的 debug 方法顶上 —— 输出里会原样打印这句话。
+> **不标注这一点就是假装演示的是完整链路。**
+
+#### `demo-bump-price.sh` —— 抬价
+
+```bash
+bash src/contract/script/demo-bump-price.sh 4000        # 推到 4000 USDC/WETH
+bash src/contract/script/demo-bump-price.sh 400000000000 --raw   # 用 8 位小数原值
+```
+
+**必须同时改两处**（脚本自己会做）：
+
+- mock oracle 的 `latestRoundData`
+- Uniswap 池子的 `slot0`（只换 `sqrtPriceX96` 与 `tick`，其余位保留）
+
+> 只改 oracle 不改池子，会造出「oracle 说涨了、市场没涨」的假场景，
+> 而且**卖方向必然 revert** —— 金库的 `minOut` 由 oracle 推出，oracle 比池价
+> 高 11% 时池子给的本来就少 11%，50bps 容差直接拒单。清仓和赎回自动卖币
+> 都走卖方向，所以只抬 oracle 会让「涨了之后 cash out」整段演示卡死。
+
+脚本自带自检：读回 `slot0` 比对 + 干跑一笔 1 USDC 的 swap（不改状态）。
+任一步失败会**把原 slot0 写回去**并 `exit 1`。
+
+#### `demo-snapshot.sh` —— 前后对比
+
+```bash
+bash src/contract/script/demo-snapshot.sh --before   # 抬价前存一份
+bash src/contract/script/demo-bump-price.sh 5000
+bash src/contract/script/demo-snapshot.sh --after    # 打印差值与百分比
+```
+
+只读。演示时如果被问「真的变了吗」，这一条能当场给出前后两列。实测输出：
+
+```
+--- 与基准的差值 ---
+totalAssets    10441829 → 10603648  (+161819)
+sharePrice     1044182 → 1060364  (+16182)
+oracle 现价    480000000000 → 500000000000
+池子现货       4788.53 → 4993.92
+currentWethBps 3719 → 3815
+NAV 涨幅       +1.55%
+```
+
+**注意池子现货跟着动了**（4788.53 → 4993.92）—— 这是 `demo-bump-price.sh`
+两处一起改的结果，不是只改了 oracle。只改 oracle 的话这里会只有一行变。
+
+---
+
+### 前端两个「演示」不是一回事
+
+页面上有两处带“演示”字样的东西，**回答的问题不同，都在是对的**：
+
+| | `demo-panel.tsx`（总览屏底部「演示操作」） | `walkthrough-bar.tsx`（执行链路屏「▶ 演示」） |
+|---|---|---|
+| 作用 | **驱动**：生成计划 → 送链上 → 抬价 | **讲解**：11 个节点逐个运镜 + 字幕 |
+| 改链上 | 三步里两步会改 | **一个字都不写** |
+| 依赖 | DeepSeek key、anvil debug 方法（所以走服务端 spawn） | 只读已有数据 |
+| 讲给 | 演示者自己点 | 评委听 |
+
+**一前一后配套**：先点 `demo-panel` 把交易送上去，再用 walkthrough 讲那笔交易怎么来的。
+顺序反了的话，walkthrough 后三步会如实显示「没有执行事件」—— 这本身也是正确行为。
+
+> `demo-panel` 的输出**原样摊开，包括失败的部分**。
+> 一个只会显示绿勾的演示，证明不了任何东西。
+
+---
+
+### 五分钟演示剧本（点按钮版，不碰命令行）
+
+前提：环境已起（`demo-up.sh`）、前端已连本地链（见「MetaMask 导入与配置」）。
+
+**按顺序点总览屏底部的三步按钮**：
+
+| 步骤 | 点完会发生什么 | 屏幕上能看到 |
+|---|---|---|
+| ① 生成计划 | Bull/Bear/Risk 三家 + Judge 出结果，写成 JSON | 「辩论与裁决」屏出现新的 `planId` |
+| ② 送到链上 | 计划 keccak 写进金库，按目标仓位调仓 | 「执行链路」屏多一笔 `PlanExecuted`；`lastNonce` +1 |
+| ③ 抬高 ETH 价 | oracle 与池子一起推到 4800 | 「总览」屏的 NAV 与份额价上涨 |
+
+**每一步的输出都会原样展开在按钮下面**，包括 `anvil_impersonateAccount` 那一行。
+红字不隐藏 —— 这是有意为之。
+
+**讲的时候可以顺着说**：
+
+1. **①之后**切到「辩论与裁决」：「三个 agent 各自给目标仓位，Judge 加权。
+   注意它没有简单平均 —— 它扣掉了论据不成立的意见。」
+2. **②之后**切到「哈希自验」：「链上 `lastPlanHash` 与这个文件的 keccak 逐位对上。
+   改一个字节，这里就红了。**这是『可审计』，不是『相信我』。**」
+3. **③之后**切回「总览」：「ETH 涨了约 30%，但基金只持有约 37%，所以 NAV 涨得不那么多。
+   **这是杠杆传导的算术，不是凭空变出来的钱。**」
+4. 最后切到「执行链路」按「▶ 演示」，让 11 个节点自己走一遍，
+   把刚才那笔交易的来路串起来。
+
+**万一 AI 判断空仓（0 bps）**：不要掩饰，直接讲
+「这次它选择不承担风险，所以抬价对净值没影响」——
+这本身证明了决策是真的，而不是前面写死了一个方向。
+
+---
+
+### demo 剧本（净值上涨怎么演，命令行版）
+
+
 
 ```bash
 # 抬价：同时推 mock oracle 与 Uniswap 池子 slot0（tick 对齐 tickSpacing=60）
@@ -211,6 +377,56 @@ ETH 涨 8.2% 只能带动 NAV 涨 2.46%。这是杠杆传导的算术，不是�
 > ✅「ETH 从 3696 涨到 4000（+8.2%），因为金库按 AI 决策持有 30% WETH，
 >    基金净值跟着涨了 2.46%」
 
+
+### 改 prompt 不会让历史计划失效（content-addressed 存档）
+
+计划文件里记的是 `promptTemplateSha = keccak256(prompt 原文)`，**不记原文**。
+所以「改了 prompt」会有一个陷阱：
+
+```
+prompts/bull.txt  被改写  →  旧计划里记的 0xceb2a196… 找不到对应内容
+                          →  那份计划的「prompt 可复算」永久失效
+```
+
+**这不是假设，是我们自己踩过的。** 2026-10-24 15:16 改了四个 prompt
+（去掉「risk 应当偏向保守」这类写死的立场），结果 8 份历史计划从「可复算」
+变成「不可复算」，`bun run debate --check` 红 32 项 —— 而那些计划文件
+本身一个字都没错。
+
+**修法：`prompts/archive/<keccak>.txt`，文件名就是它自己的校验和。**
+
+```
+prompts/
+  bull.txt                          ← 当前用的
+  index.json
+  archive/
+    0xceb2a196….txt                 ← 15:16 之前那版
+    0x345570c2….txt                 ← 现在这版（每次 debate 自动归档）
+```
+
+`--check` 现在问的问题变了：
+
+```
+❌ 旧问题：「这份计划是不是用当前 prompt 生成的？」→ 改 prompt 就全红
+✅ 新问题：「它当时用的那份原文，我们还能不能拿出来？」→ 按 hash 去 archive 找
+```
+
+于是**改 prompt 是「新增」不是「覆盖」**，历史字节永远还在。
+
+```bash
+cd src/backend
+
+# 校验全部历史计划（现在 13 份全 OK，且改 prompt 之后仍然 OK）
+bun run debate --check
+
+# 每次 bun run debate 会自动把当前 prompt 归档，输出一行
+#   prompts archived: 0x345570c2….txt
+```
+
+> **归档是在调 LLM 之前做的，不是之后。** 因为计划文件可能已经写下新哈希了，
+> 事后归档会在「生成中途失败」时留下一个指向空气的哈希。
+
+---
 
 ### 诚实边界（8 条，逐条都在限制一个对外承诺）
 
@@ -295,6 +511,10 @@ MetaMask → **Import tokens** → **Custom token**，加两个：
 
 > **基金份额代币的地址就是金库合约本身** —— ERC-4626 金库本身就是 ERC-20，
 > 你的份额就是它的代币。不是笔误。
+>
+> ⚠️ **这个地址会变。** `demo-up.sh` 不带 `RESET=1` 时复用同一个金库，
+> 带 `RESET=1` 时会部署新的、地址就变了。届时以它打印的 `VAULT_ADDRESS` 为准，
+> 在 MetaMask 里把旧的份额代币删掉、按新地址重新导入。
 
 导入后应该看到：
 
@@ -338,12 +558,26 @@ A: 正常。Reown 走 WalletConnect 云端中继，手机访问不到你电脑�
 `anvil` 进程一停，部署、mock feed、入金全部消失。重跑：
 
 ```bash
-bash src/contract/script/demo-up.sh          # 重建（地址不变，DEPLOY_BLOCK 会变）
+bash src/contract/script/demo-up.sh          # 复用已部署的金库，只补 feed 和入金
+PORT=8545 RESET=1 bash src/contract/script/demo-up.sh   # 部署一个全新的金库
 ```
 
+**不加 `RESET=1` 会复用**：脚本读 `/tmp/alphaplan-demo-env` 里记的地址，
+发现链上还有代码就直接用，只重新装 mock feed、重新入金。地址不变。
+
+**加了 `RESET=1` 会换地址**：部署新金库，打印新的 `VAULT_ADDRESS`。
+此时必须同步改三处，否则页面读旧库、脚本写新库：
+
+```
+src/frontend/alpha-plan/.env.local   VAULT_ADDRESS / DEPLOY_BLOCK   （改了要重启 dev）
+根 .env                              VAULT_ADDRESS / DEPLOY_BLOCK   （8788 要用）
+```
+
+> **旧金库不会消失。** 它仍在链上、仍有代码、仍能读。
+> 脚本会在部署前打印「旧金库 0x… 仍在链上」—— 看到这句就说明下游有指错的风险。
+
 重启后 MetaMask 里**不用重新导入** —— 网络和代币配置都还在。
-但余额会回到初始值，页面上的 `DEPLOY_BLOCK` 可能需要在 `.env.local` 里更新
-（`demo-up.sh` 会把新值写在输出里）。
+但**如果换了金库地址，份额代币要重新导入**（ERC-4626 的份额代币就是金库本身）。
 
 ### ⚠️ 关于本地链（必须知道）
 
@@ -392,3 +626,5 @@ baw --help            # 查看钱包 CLI 全部命令
 ## 许可证
 
 个人项目，暂未开放授权。未经许可请勿使用。
+
+黑客松赛道：🧠 Verifiable AI。

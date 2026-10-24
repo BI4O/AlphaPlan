@@ -79,3 +79,88 @@ export function renderJudgeUserMessage(input: MarketInput, rounds: AgentOpinion[
     })),
   });
 }
+
+/**
+ * 按 keccak 反查 prompt 原文 —— 「改 prompt 不再让历史计划失效」的那一半。
+ *
+ * ## 为什么需要它
+ *
+ * 计划文件只记 `promptTemplateSha`，不记 prompt 原文。所以校验历史计划时，
+ * 如果只拿「当前 prompts/ 目录」去比，一旦 prompt 被改写，旧计划的哈希就
+ * 永远对不上 —— **那些计划的「prompt 可复算」永久失效**，而可复算正是
+ * 这个产品卖的东西。
+ *
+ * 实测踩过：2026-10-24 15:16 改了四个 prompt（去掉一条偏向保守的指令），
+ * 结果 8 份历史计划从「可复算」变成「不可复算」，`--check` 红 32 项。
+ *
+ * ## 修法：content-addressed 存档
+ *
+ * `prompts/archive/<keccak>.txt` —— 文件名就是它自己的哈希。
+ * 于是：
+ *   - 改 prompt 是**新增**一个存档，不是覆盖（历史字节永远还在）
+ *   - 只要链上/计划里记着 hash，就永远能找回当时那份原文
+ *   - 找回后可以重新校验：keccak(找到的字节) === 计划里记的 hash
+ *
+ * 这正是「内容寻址」该有的性质：**名字就是校验和**。
+ *
+ * 找不到时返回 null，而不是抛错 —— 校验方要知道「缺了什么」，
+ * 而不是让整个 --check 因为一个缺失文件崩掉。
+ */
+export async function findPromptByHash(
+  hash: string,
+  dir = "prompts",
+): Promise<{ path: string; bytes: Uint8Array } | null> {
+  const want = hash.toLowerCase();
+
+  // 先看当前目录：绝大多数情况下就是它，省一次磁盘往返。
+  // 注意不能因为「名字对」就认为「内容对」—— 必须算哈希。
+  for (const name of PROMPT_NAMES) {
+    const path = `${dir}/${name}.txt`;
+    const file = Bun.file(path);
+    if (!(await file.exists())) continue;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (keccakOf(bytes).toLowerCase() === want) return { path, bytes };
+  }
+
+  // 再按哈希去存档里找。文件名就是哈希，所以这是一次直接的路径查找。
+  const archived = `${dir}/archive/${want}.txt`;
+  const file = Bun.file(archived);
+  if (await file.exists()) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // 文件名可能被手工改过 —— 仍然要验内容，不能只信文件名。
+    if (keccakOf(bytes).toLowerCase() === want) return { path: archived, bytes };
+  }
+
+  return null;
+}
+
+/**
+ * 改 prompt 时必须先归档 —— 否则历史计划的追溯链会断。
+ *
+ * ## 为什么要在写之前检查，而不是事后 `--check` 报错
+ *
+ * 事后报错意味着「发现时已经断了」。而断了之后**没法补**：旧字节如果没留，
+ * 谁也不知道当时那份 prompt 长什么样，哈希就成了一个指向空气的指针。
+ *
+ * 所以这道检查放在 `loadPromptTemplates` 之后、真正调 LLM 之前：
+ *   - 当前 prompts/*.txt 的哈希如果不在 archive 里 → 先把它归档
+ *   - 归档之后，**任何**历史计划里记的旧哈希也仍然能解析
+ *
+ * 注意方向：归档的是「现在这份」，不是「历史那份」。历史那份可能早就丢了，
+ * 这个函数救不回来 —— 它只保证**今天开始**不会再丢。
+ */
+export async function archiveCurrentPrompts(dir = "prompts"): Promise<{ added: string[] }> {
+  const prompts = await loadPromptTemplates(dir);
+  const added: string[] = [];
+
+  // Bun.write 自己会建父目录（项目里 debate.ts 的 persist() 也是这么用的），
+  // 所以不需要 node:fs 的 mkdir —— 少一个 import，也少一处平台差异。
+  for (const name of PROMPT_NAMES) {
+    const t = prompts[name];
+    const dest = `${dir}/archive/${t.keccak256}.txt`;
+    if (await Bun.file(dest).exists()) continue;
+    await Bun.write(dest, t.text);
+    added.push(`${t.keccak256}.txt`);
+  }
+  return { added };
+}
