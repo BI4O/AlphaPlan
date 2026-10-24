@@ -1,4 +1,6 @@
-import { fixed, shortHex } from "@/lib/format";
+import { fixed, percentOf, rawBps, shortHex, signedPoints } from "@/lib/format";
+
+import { TERMS, termTitle } from "@/lib/terms";
 
 import { DemoPanel } from "../demo-panel";
 import { Icon } from "../icons";
@@ -42,8 +44,8 @@ export function OverviewScreen({
           <p className="lede">
             {verdict?.targetWethBps != null ? (
               <>
-                三个 agent 各给一个目标仓位，judge 裁决{" "}
-                <strong>{verdict.targetWethBps} bps</strong>。
+                三个 agent 各给一个目标仓位，judge 裁决让 ETH 占{" "}
+                <strong>{percentOf(verdict.targetWethBps)}</strong>。
               </>
             ) : (
               <>本轮裁决未采集到。</>
@@ -73,8 +75,14 @@ export function OverviewScreen({
 
       <div className="kpis" role="group" aria-label="关键数字">
         <div className="kpi kpi--lead">
-          <p className="kpi__label">
-            <Icon name="nav" size={13} /> NAV
+          {/*
+            标签用中文（「基金总值」），NAV 缩写在下面副标题里出现一次并带悬停解释。
+            给人看的界面不该假设读者知道 NAV 是什么 —— 但缩写也不能全删，
+            否则懂的人反而找不到锚点。
+          */}
+          <p className="kpi__label" title={termTitle("nav")}>
+            <Icon name="nav" size={13} /> 基金总值
+            <span className="kpi__abbr">{TERMS.nav.short}</span>
           </p>
           <p className="kpi__value od-nowrap">
             {navUsdc === null ? "—" : fixed(navUsdc, 2)}
@@ -88,17 +96,23 @@ export function OverviewScreen({
         </div>
 
         <div className="kpi">
-          <p className="kpi__label">
-            <Icon name="decision" size={13} /> 本轮裁决
+          <p className="kpi__label" title={termTitle("bps")}>
+            <Icon name="decision" size={13} /> AI 决定的 ETH 占比
           </p>
           <p className="kpi__value od-nowrap">
-            {verdict?.targetWethBps == null ? "—" : verdict.targetWethBps}
-            <span className="unit">bps</span>
+            {verdict?.targetWethBps == null ? "—" : percentOf(verdict.targetWethBps)}
+            {verdict?.targetWethBps != null && (
+              <span className="unit" title={termTitle("bps")}>
+                {rawBps(verdict.targetWethBps)}
+              </span>
+            )}
           </p>
           <p className="kpi__sub">
             {mean === null || delta === null
               ? "算术均值未采集"
-              : `较算术均值 ${delta > 0 ? "+" : ""}${delta} bps`}
+              : // 主语必须写全。主值是「AI 的目标」，这里是「三个 agent 各自目标的平均」
+                // —— 前者是裁决结果，后者是裁决的**输入**。并排不写主语会被读成矛盾。
+                `三个 agent 各自目标平均 ${percentOf(mean)}，AI 裁决${delta === 0 ? "与均值相同" : `比均值 ${signedPoints(delta)}`}`}
           </p>
         </div>
 
@@ -228,8 +242,8 @@ export function OverviewScreen({
               <dd>{vault ? vault.blockNumber.toString() : "—"}</dd>
             </div>
             <div>
-              <dt>仓位上界</dt>
-              <dd>{vault ? `${vault.currentWethBps} bps 当前` : "—"}</dd>
+              <dt>当前 ETH 仓位</dt>
+              <dd>{vault ? percentOf(vault.currentWethBps) : "—"}</dd>
             </div>
           </dl>
         </section>
@@ -290,7 +304,7 @@ export function OverviewScreen({
                             : "—"}
                     </td>
                     <td className="r num">
-                      {row.actualWethBps === null ? "—" : `${row.actualWethBps} bps`}
+                      {row.actualWethBps === null ? "—" : percentOf(row.actualWethBps)}
                     </td>
                     <td className="num">{row.planHash ? shortHex(row.planHash, 8, 4) : "—"}</td>
                     <td className="num">{shortHex(row.txHash, 6, 4)}</td>

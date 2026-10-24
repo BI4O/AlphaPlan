@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T08:20:19Z",
+  "asOf": 1792830019,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 4800,
+    "ethUsd24hPct": 36.6909,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20.8837,
+      "wethBps": 1859
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 3500,
+      "confidence": 0.66,
+      "reason": "ETH is up 36.7% over 24h while BTC is down 2.8%, a strong ETH-specific divergence, yet the vault holds only 1859 bps WETH. I would raise exposure meaningfully but not chase toward the 6000 bps cap after such an extreme one-day move."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 1000,
+      "confidence": 0.68,
+      "reason": "ETH's +36.7% single-day spike to $4800 while BTC fell -2.8% is a sharp, ETH-specific parabolic divergence rarely sustained, and with the vault already at 1859 bps, trimming toward 1000 bps locks in gains against mean-reversion risk."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 1200,
+      "confidence": 0.72,
+      "reason": "ETH's +36.69% 24h move is extreme and diverges from BTC's -2.82%, signaling elevated reversal and drawdown risk; I would trim WETH from 18.59% to 12% while retaining some exposure given WETH's liquidity."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 1500,
+    "confidence": 0.6,
+    "rationale": "The bull's momentum argument after a one-day 36.7% ETH spike is less supported than the bear/risk emphasis on reversal risk, but their shared premise is not fully independent, so I trim moderately from the current 1859 bps to 1500 bps."
+  }
+}

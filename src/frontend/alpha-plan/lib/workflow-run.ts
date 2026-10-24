@@ -10,7 +10,7 @@ import {
   type VaultReadings,
 } from "./chain";
 import { rpcUrl, vaultAddress } from "./env";
-import { bps, duration, fixed, isoFromUnix, shortHex } from "./format";
+import { bps, duration, fixed, isoFromUnix, percentOf, rawBps, shortHex, signedPoints } from "./format";
 import { readLatestPlan } from "./plan-file";
 import type { WorkflowField, WorkflowModel, WorkflowNode } from "./workflow-types";
 
@@ -140,7 +140,7 @@ function readNode(
     });
     fields.push({
       label: "currentWethBps",
-      value: `${vault.value.currentWethBps} bps`,
+      value: `${percentOf(vault.value.currentWethBps)}（${rawBps(vault.value.currentWethBps)}）`,
       source: "chain",
       note: "合约的当前仓位，不是计划里的目标值。",
     });
@@ -323,7 +323,7 @@ function aiNode(plan: Record<string, unknown> | null): WorkflowNode {
   for (const round of rounds) {
     fields.push({
       label: round.agent,
-      value: `${round.targetWethBps ?? "—"} bps · 信心 ${round.confidence ?? "—"} · ${round.model}`,
+      value: `${percentOf(round.targetWethBps)}（${rawBps(round.targetWethBps)}）· 信心 ${round.confidence ?? "—"}（自评）· ${round.model}`,
       source: "plan-file",
       note: round.reason ?? undefined,
     });
@@ -336,7 +336,7 @@ function aiNode(plan: Record<string, unknown> | null): WorkflowNode {
   if (finalBps !== null) {
     fields.push({
       label: "judge",
-      value: `${finalBps} bps · 信心 ${finalConfidence ?? "—"} · ${asString(final?.model) ?? "—"}`,
+      value: `${percentOf(finalBps)}（${rawBps(finalBps)}）· 信心 ${finalConfidence ?? "—"}（自评）· ${asString(final?.model) ?? "—"}`,
       source: "plan-file",
       note: rationale ?? undefined,
     });
@@ -351,7 +351,7 @@ function aiNode(plan: Record<string, unknown> | null): WorkflowNode {
     const delta = finalBps - mean;
     fields.push({
       label: "vs 算术平均",
-      value: `${fixed(mean, 0)} → ${finalBps}（${delta >= 0 ? "+" : ""}${fixed(delta, 0)}）`,
+      value: `${percentOf(mean)} → ${percentOf(finalBps)}（${signedPoints(delta)}）`,
       source: "derived",
       note: "由文件里三方 targetWethBps 现算。偏离本身不是卖点：judge 的 rationale 必须说清它为什么不信某一方。",
     });

@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:51:57Z",
+  "asOf": 1792828317,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 5000,
+    "ethUsd24hPct": 9.9117,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 10.6036,
+      "wethBps": 3815
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 4600,
+      "confidence": 0.72,
+      "reason": "ETH is up 9.91% to $5000 while BTC is down 2.82%, a strong ETH-led divergence that supports increasing WETH exposure from the current 3815 bps. The move is already large, so I would raise toward 4600 bps rather than the 6000 bps cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.65,
+      "reason": "ETH is up ~9.9% over 24h while BTC is down ~2.8%, a sharp divergence that raises reversal risk and argues for trimming WETH from the current 3815 bps toward 3000 bps. I would not cut more aggressively because ETH's momentum is still strong."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 2800,
+      "confidence": 0.72,
+      "reason": "ETH is up 9.91% while BTC is down 2.82%, a large and divergent tape that raises reversal risk; the vault's current 3815 bps WETH allocation is too exposed if that move unwinds. I would cut to 2800 bps, staying below the 6000 bps cap while preserving some exposure."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 4000,
+    "confidence": 0.55,
+    "rationale": "The bear and risk agents share a weak premise that a one-day ETH/BTC divergence implies reversal risk, which the provided data does not directly support, so I discount them. The bull's momentum case has some support but not enough to chase 4600, so I settle at a modest increase to 4000 bps."
+  }
+}

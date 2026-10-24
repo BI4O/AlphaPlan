@@ -1,7 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { percentOf } from "@/lib/format";
 
 /**
  * 演示操作面板 —— 把四个命令行动作变成按钮。
@@ -24,6 +26,39 @@ import { useCallback, useState } from "react";
  */
 
 type ActionKey = "debate" | "report" | "bump";
+
+/** `/api/demo/state` 的形状（只读，不含任何写操作）。 */
+type DemoState = {
+  ok: boolean;
+  reason?: string;
+  chain: {
+    chainId: number | null;
+    expectedChainId: number;
+    vault: string | null;
+    vaultHasCode: boolean;
+    lastNonce: number | null;
+    deployBlock: number | null;
+  };
+  ready: {
+    planId: string;
+    bytes: number;
+    keccak256: string;
+    targetWethBps: number;
+    asOf: number;
+    validUntil: number;
+    secondsLeft: number;
+    alreadyOnchain: boolean;
+  } | null;
+  totalPlans: number | null;
+};
+
+/** 把「还剩多少秒」说成人话。列表里不放具体时刻 —— 时区会误导。 */
+function untilLabel(seconds: number): string {
+  if (seconds <= 0) return "已过期";
+  if (seconds < 60) return `还剩 ${seconds} 秒`;
+  const m = Math.floor(seconds / 60);
+  return `还剩 ${m} 分钟`;
+}
 
 type Step = {
   key: ActionKey;
@@ -74,6 +109,22 @@ export function DemoPanel() {
   const onDone = useCallback(() => router.refresh(), [router]);
   const [busy, setBusy] = useState<ActionKey | null>(null);
   const [results, setResults] = useState<Partial<Record<ActionKey, Result>>>({});
+  const [state, setState] = useState<DemoState | null>(null);
+
+  // 只读状态：告诉用户「① 要不要再跑」「② 现在点了会不会被拒」。
+  // 演示时最尴尬的两件事都能靠它避开 —— 白等 82 秒、或者点②才发现计划过期。
+  const reload = useCallback(async () => {
+    try {
+      const res = await fetch("/api/demo/state", { cache: "no-store" });
+      setState((await res.json()) as DemoState);
+    } catch {
+      setState(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
 
   async function run(key: ActionKey) {
     setBusy(key);
@@ -86,7 +137,10 @@ export function DemoPanel() {
       });
       const json = (await res.json()) as Result;
       setResults((r) => ({ ...r, [key]: json }));
-      if (json.exitCode === 0) onDone();
+      if (json.exitCode === 0) {
+        onDone();
+        void reload();
+      }
     } catch (err) {
       setResults((r) => ({
         ...r,
@@ -146,6 +200,53 @@ export function DemoPanel() {
               <p className="demo__what" id={`demo-what-${step.key}`}>
                 {step.what}
               </p>
+
+              {/* ① 的「已经准备好了」提示 —— 避免演示时白等 82 秒 */}
+              {step.key === "debate" && state?.ready && (
+                <p className="demo__ready" data-tone="ok">
+                  <span className="demo__ready-dot" aria-hidden="true" />
+                  已有一份可送的计划：<span className="mono">{state.ready.planId}</span>
+                  {" · "}
+                  ETH 占比 {percentOf(state.ready.targetWethBps)}
+                  {" · "}
+                  {untilLabel(state.ready.secondsLeft)}
+                  。演示时可以直接点 ②，不必等这一轮 82 秒。
+                </p>
+              )}
+
+              {/* ② 的前置条件 —— 没有就绪计划时先说清楚，别让人点了才失败 */}
+              {step.key === "report" && state && (
+                <>
+                  {state.ready && state.ready.secondsLeft > 0 && (
+                    <p className="demo__ready" data-tone="ok">
+                      <span className="demo__ready-dot" aria-hidden="true" />
+                      可以送：<span className="mono">{state.ready.planId}</span>
+                      {" · "}
+                      ETH 占比 {percentOf(state.ready.targetWethBps)}
+                      {" · "}
+                      {untilLabel(state.ready.secondsLeft)}
+                    </p>
+                  )}
+                  {state.ready && state.ready.secondsLeft <= 0 && (
+                    <p className="demo__ready" data-tone="bad">
+                      <span className="demo__ready-dot" aria-hidden="true" />
+                      现有的计划已过期（{state.ready.planId}），送上去合约会拒。先点 ①。
+                    </p>
+                  )}
+                  {!state.ready && state.ok && (
+                    <p className="demo__ready" data-tone="bad">
+                      <span className="demo__ready-dot" aria-hidden="true" />
+                      没有可送的计划。先点 ① 生成一份。
+                    </p>
+                  )}
+                  {!state.ok && (
+                    <p className="demo__ready" data-tone="bad">
+                      <span className="demo__ready-dot" aria-hidden="true" />
+                      状态读不到：{state.reason}
+                    </p>
+                  )}
+                </>
+              )}
               <p className="demo__production">
                 <span className="demo__production-label">真实部署</span>
                 {step.production}

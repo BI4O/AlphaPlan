@@ -35,6 +35,18 @@ export type FundData = {
   redeemLimit: RedeemLimit | null;
   /** 可赎回上限读失败的原因。有值时必须显示给用户，不能只是「—」。 */
   redeemLimitError: string | null;
+  /**
+   * 三个基础数值有没有真的读失败过。
+   *
+   * `null` 在这套类型里同时表示三件事：「没连钱包」「还在读」「读失败」——
+   * 那是 hydration bug 的另一半：还没读就显示「读取失败」，是在陈述一件
+   * 没发生过的事。加这个字段把三者分开：
+   *
+   *   loading=true            → 还在读
+   *   loading=false, error=空, 值=null → 没连钱包（没读）
+   *   error 有值              → 真的读失败了
+   */
+  readError: string | null;
   loading: boolean;
 };
 
@@ -44,6 +56,7 @@ const EMPTY: FundData = {
   shareBalance: null,
   redeemLimit: null,
   redeemLimitError: null,
+  readError: null,
   loading: false,
 };
 
@@ -92,26 +105,33 @@ export function useFundData(args: {
       if (cancelled) return;
       setData((d) => ({ ...d, loading: true }));
 
-      const readErc20 = async (functionName: "balanceOf" | "allowance", fargs: readonly unknown[]) => {
+      // 返回 {value} 或 {error} 而不是 null —— 因为调用方需要区分
+      // 「读到了 0」和「读失败了」。之前一律返回 null，于是 UI 只能把
+      // null 当「读失败」显示，可 loading 期间它其实还没读。
+      const readErc20 = async (
+        functionName: "balanceOf" | "allowance",
+        fargs: readonly unknown[],
+      ): Promise<{ value: bigint | null; error: string | null }> => {
         try {
-          return (await publicClient.readContract({
+          const value = (await publicClient.readContract({
             address: usdc,
             abi: erc20Abi,
             functionName,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             args: fargs as any,
           })) as bigint;
-        } catch {
-          return null;
+          return { value, error: null };
+        } catch (e: unknown) {
+          return { value: null, error: shortReason(e) };
         }
       };
 
-      const [usdcBalance, allowance, shareBalance, limitResult] = await Promise.all([
+      const [usdcRead, allowanceRead, shareRead, limitResult] = await Promise.all([
         readErc20("balanceOf", [address]),
         readErc20("allowance", [address, vault]),
-        (async () => {
+        (async (): Promise<{ value: bigint | null; error: string | null }> => {
           try {
-            return (await publicClient.readContract({
+            const value = (await publicClient.readContract({
               address: vault,
               abi: [
                 {
@@ -125,8 +145,9 @@ export function useFundData(args: {
               functionName: "balanceOf",
               args: [address],
             })) as bigint;
-          } catch {
-            return null;
+            return { value, error: null };
+          } catch (e: unknown) {
+            return { value: null, error: shortReason(e) };
           }
         })(),
         readRedeemLimit({ client: publicClient, vault, investor: address, shareDecimals })
@@ -136,12 +157,18 @@ export function useFundData(args: {
 
       if (cancelled) return;
 
+      // 三条里任一条失败，就把第一条失败原因抬到 readError ——
+      // UI 拿到的是「读失败了，原因是 X」，而不是一个没法区分的 null。
+      const firstError =
+        usdcRead.error ?? allowanceRead.error ?? shareRead.error ?? null;
+
       setData({
-        usdcBalance,
-        allowance,
-        shareBalance,
+        usdcBalance: usdcRead.value,
+        allowance: allowanceRead.value,
+        shareBalance: shareRead.value,
         redeemLimit: limitResult.ok ? limitResult.value : null,
         redeemLimitError: limitResult.ok ? null : limitResult.reason,
+        readError: firstError,
         loading: false,
       });
     })();

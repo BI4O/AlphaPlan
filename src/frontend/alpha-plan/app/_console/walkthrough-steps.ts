@@ -1,3 +1,5 @@
+import { percentOf, signedPoints } from "@/lib/format";
+
 import type { ConsoleData } from "./types";
 
 /**
@@ -37,16 +39,11 @@ export type WalkthroughScript = {
 };
 
 /**
- * 偏离量，取整并处理符号。
- *
- * 与 chain.tsx 的 fmtDeviation 同一套口径 —— 同一屏里
- * 节点 meta 与字幕显示的偏离必须一模一样。
- * 特别是 0：`+0` 是错的，`-0` 更错，只有 `0` 对。
+ * 偏离量。与 chain.tsx 的 fmtDeviation 同源（都走 `signedPoints`）——
+ * 同一屏里节点 meta 与字幕显示的偏离必须一模一样，包括「0 不写符号」这条。
  */
 function fmtDeviation(dev: number): string {
-  const rounded = Math.round(dev);
-  if (rounded === 0) return "0";
-  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+  return signedPoints(dev);
 }
 
 /** `0x1234…abcd` —— 与画布上节点 meta 的截断方式一致，避免同一屏两种写法。 */
@@ -77,7 +74,7 @@ export function buildWalkthrough(data: ConsoleData): WalkthroughScript {
     const r = debate.rounds.find((x) => x.agent === agent);
     return r ? r.targetWethBps : null;
   };
-  const fmtBps = (v: number | null) => (v === null ? null : v.toLocaleString("en-US"));
+  const fmtBps = (v: number | null) => (v === null ? null : percentOf(v));
 
   const bull = bpsOf("bull");
   const bear = bpsOf("bear");
@@ -96,7 +93,7 @@ export function buildWalkthrough(data: ConsoleData): WalkthroughScript {
       nodeId: "read",
       title: "读取金库余额",
       body: vault
-        ? `viem 直读金库合约，在区块 ${vault.blockNumber.toString()} 读到：总资产 ${vault.totalAssets.toFixed(2)} ${vault.assetSymbol}，WETH 占比 ${vault.currentWethBps} bps。这是读取时刻的快照，不是执行发生的那一刻。`
+        ? `viem 直读金库合约，在区块 ${vault.blockNumber.toString()} 读到：总资产 ${vault.totalAssets.toFixed(2)} ${vault.assetSymbol}，WETH 占比 ${percentOf(vault.currentWethBps)}。这是读取时刻的快照，不是执行发生的那一刻。`
         : `读不到金库：${data.vault.ok ? "未知原因" : data.vault.reason}`,
       hasValue: Boolean(vault),
     },
@@ -124,7 +121,7 @@ export function buildWalkthrough(data: ConsoleData): WalkthroughScript {
       body:
         bull === null
           ? "没有读到看多的报价。"
-          : `看多给出 ${fmtBps(bull)} bps 仓位。三个 agent 各自独立发言，互不参考。`,
+          : `看多给出 ${fmtBps(bull)} 的 ETH 占比。三个 agent 各自独立发言，互不参考。`,
       hasValue: bull !== null,
     },
     {
@@ -133,7 +130,7 @@ export function buildWalkthrough(data: ConsoleData): WalkthroughScript {
       body:
         bear === null
           ? "没有读到看空的报价。"
-          : `看空给出 ${fmtBps(bear)} bps。与看多 ${fmtBps(bull) ?? "—"} bps 分列，没有先商量。`,
+          : `看空给出 ${fmtBps(bear)}。与看多 ${fmtBps(bull) ?? "—"} 分列，没有先商量。`,
       hasValue: bear !== null,
     },
     {
@@ -142,7 +139,7 @@ export function buildWalkthrough(data: ConsoleData): WalkthroughScript {
       body:
         risk === null
           ? "没有读到风控的报价。"
-          : `风控给出 ${fmtBps(risk)} bps。它的上限是合约里的 6,000 bps，超出会被门禁拦下。`,
+          : `风控给出 ${fmtBps(risk)}。它的上限是合约里的 60%，超出会被门禁拦下。`,
       hasValue: risk !== null,
     },
     {
@@ -151,7 +148,7 @@ export function buildWalkthrough(data: ConsoleData): WalkthroughScript {
       body:
         final === null || mean === null
           ? "没有读到裁决。"
-          : `算术平均是 ${mean.toLocaleString("en-US")} bps，裁决取 ${fmtBps(final)} bps，偏离 ${fmtDeviation(final - mean)} bps。judge 有权偏离均值，但偏离量必须写出来。`,
+          : `算术平均是 ${percentOf(mean)}，裁决取 ${fmtBps(final)}，偏离 ${fmtDeviation(final - mean)}。judge 有权偏离均值，但偏离量必须写出来。`,
       hasValue: final !== null,
     },
     {

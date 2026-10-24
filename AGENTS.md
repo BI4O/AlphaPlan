@@ -754,3 +754,92 @@ parent directories; no node:fs needed」）—— 这个仓的约定一直是这
 第 10 例是 reviewer 自己抓的：它原来 grep `debate.ts` 里 `promptTemplateSha`
 出现次数 ≥ 4，但实现重构成「1 处泛化写入 × 4 次调用」后只剩 3 次 → 假红。
 改成检查**实际产物**里有没有 4 处。
+
+---
+
+# `null` 同时表示三件事 —— 那就是 hydration mismatch 的温床
+
+**实例（2026-10-24，`fund-actions.tsx`）**：
+
+```
++ 读取失败
+- —
+```
+
+React 报 `Hydration failed because the server rendered text didn't match the client`。
+
+## 两个 bug 叠在一起
+
+**第一层：服务端和客户端对「连没连钱包」的答案不同**
+
+`useAccount()` 的 `isConnected` 在服务端恒为 `false`，hydrate 后立刻变 `true`。
+于是同一个 `<dd>`：
+
+| | 服务端渲染 | 客户端渲染 |
+|---|---|---|
+| `allowance === null` | —（因为 `!isConnected`）| 读取失败 |
+
+两边输出不同 → mismatch → React 重建整棵树。
+
+**第二层：`null` 同时表示三件事**
+
+```typescript
+allowance: bigint | null
+```
+
+`null` 在这里是「没连钱包」「还在读」「读失败了」**三者共用**。UI 只能挑一个
+说法，于是 loading 期间也显示「读取失败」—— **那是在陈述一件没发生过的事**。
+
+## 修法：两层都要修
+
+**1. 用 `useIsClient()` 把服务端与客户端对齐**
+
+```tsx
+const isClient = useIsClient();          // useSyncExternalStore，服务端 false
+const walletKnown = isClient && isConnected;
+if (!walletKnown) return "—";            // 两边渲染完全相同的东西
+```
+
+不用 `useEffect + setMounted`：那会在 effect 里同步 setState，
+`react-hooks/set-state-in-effect` 直接报错。
+
+**2. 把三态拆开，别用一个 `null` 表达**
+
+```typescript
+type FundData = {
+  usdcBalance: bigint | null;
+  readError: string | null;   // ← 新增：真的读失败过吗
+  loading: boolean;
+};
+
+// 渲染三态，而不是两态
+fund.loading ? "读取中…"
+  : fund.readError ? "读取失败"
+  : `${human(...)}`
+```
+
+## 推广规则
+
+**任何「读不到」的字段，都要能回答「为什么读不到」。**
+
+`null` 只能说明「没有值」，不能区分：
+- 没请求（没连钱包 / 还没挂载）
+- 请求中（loading）
+- 请求失败（error）
+
+把三件事压进一个 `null`，UI 就必然在某一种情况下撒谎。
+而撒谎的时机恰好是**首屏**——评委看到的第一眼。
+
+## 这个坑的形态
+
+| # | 形态 |
+|---|---|
+| 7 | 探测方法本身有缺陷 |
+| 8 | 同一视图多个「当前」判定源 |
+| 9 | 判据问错了问题 |
+| 10 | 判据依赖实现形式 |
+| 11 | 工具链的隐含约束 |
+| **12** | **一个 `null` 承载多种语义，导致 UI 在某个时刻必然撒谎** |
+
+第 12 例和前面几例的区别：前几例是**判断错了**，这一例是**类型表达力不够** ——
+代码没写错，是数据形状不允许它说真话。

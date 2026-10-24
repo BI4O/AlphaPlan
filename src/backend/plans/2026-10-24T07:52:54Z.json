@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:52:54Z",
+  "asOf": 1792828374,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 5000,
+    "ethUsd24hPct": 9.9117,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 10.6036,
+      "wethBps": 3815
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 5000,
+      "confidence": 0.62,
+      "reason": "ETH's +9.9% 24h move against BTC's -2.8% signals ETH-specific rotation strength, justifying raising WETH from 3815bps toward the 60% cap. A one-day ~10% surge argues against maxing out, so I target 50% rather than 60%."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.65,
+      "reason": "ETH's +9.91% 24h surge to $5000 while BTC fell -2.82% to $80,788 is a sharp, divergent move that looks narrow and fragile rather than broad-based strength. Reducing from the current 38.15% WETH allocation to 25% cuts exposure to a potential mean-reversion after the large ETH rally."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.72,
+      "reason": "ETH is up 9.91% while BTC is down 2.82%, a large and divergent 24h move that signals elevated volatility and cross-market disagreement; reducing WETH from 3815 to 3000 bps trims drawdown risk while keeping the vault meaningfully exposed."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 4000,
+    "confidence": 0.6,
+    "rationale": "The raw mean of 3500 overweights bear/risk's shared but weakly supported premise that the ETH/BTC divergence is negative; I treat ETH's +9.91% as a one-day rotation signal and raise WETH from 3815 to 4000 bps, but cap confidence because one-day moves are noisy."
+  }
+}

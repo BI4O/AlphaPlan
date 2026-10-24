@@ -38,3 +38,53 @@ export function isoFromUnix(seconds: number | null | undefined): string {
   if (!seconds || !Number.isFinite(seconds)) return "—";
   return new Date(seconds * 1000).toISOString().replace(".000Z", "Z");
 }
+
+/**
+ * bps → 百分数，给不懂 bps 的人看。
+ *
+ * 1800 bps → "18.00%"。整数百分比时不留小数位（"18%"），
+ * 因为「18.00%」会让不熟悉的人以为有隐藏精度。
+ *
+ * 为什么不直接除以 100 再 toFixed：1875 bps 是 18.75%，除以 100 得 18.75，
+ * 再 toFixed(0) 会变成 19 —— 那是把 18.75% 说成 19%，多报了 0.25 个百分点。
+ */
+export function percentOf(bps: number | null | undefined): string {
+  if (bps == null) return "—";
+  const pct = bps / 100;
+  return Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(2).replace(/\.?0+$/, "")}%`;
+}
+
+/**
+ * 差值的单位是「个百分点」，不是「%」。
+ *
+ * 40% 降到 35% 是差 5 个百分点，相对变化却是 12.5% —— 差值一律写「个百分点」，
+ * 才不会和占比本身混成一种数。
+ */
+function pointsText(points: number): string {
+  return `${points.toLocaleString("en-US", { maximumFractionDigits: 2 })} 个百分点`;
+}
+
+/** 距离（无方向）：500 bps → "5 个百分点"。 */
+export function pointsOf(bps: number | null | undefined): string {
+  if (bps == null || !Number.isFinite(bps)) return "—";
+  return pointsText(Math.abs(Math.round(bps) / 100));
+}
+
+/**
+ * 带方向的差值：500 bps → "+5 个百分点"。
+ *
+ * 取整之后再判符号 —— AGENTS.md 记过 `delta > 0 ? "+" : ""` 在 0.4 上判真、
+ * 四舍五入成 0，于是出现「+0」的坑。
+ */
+export function signedPoints(bps: number | null | undefined): string {
+  if (bps == null || !Number.isFinite(bps)) return "—";
+  const points = Math.round(bps) / 100;
+  if (points === 0) return pointsText(0);
+  return points > 0 ? `+${pointsText(points)}` : pointsText(points);
+}
+
+/** 原始整数 bps，作百分比旁边的副值：4000 → "4,000 bps"。 */
+export function rawBps(bps: number | null | undefined): string {
+  if (bps == null || !Number.isFinite(bps)) return "—";
+  return `${bps.toLocaleString("en-US")} bps`;
+}

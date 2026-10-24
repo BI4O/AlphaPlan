@@ -1,5 +1,6 @@
 
-import { fixed, shortHex } from "@/lib/format";
+import { fixed, percentOf, shortHex } from "@/lib/format";
+import { termTitle } from "@/lib/terms";
 
 import { FundActions } from "../../_wallet/fund-actions";
 import { RefreshOnDone } from "../../_wallet/refresh-on-done";
@@ -43,8 +44,8 @@ export function BookScreen({ data }: { data: ConsoleData }) {
 
       <dl className="vault">
         <div className="vault__cell vault__cell--lead">
-          <dt className="vault__label">
-            <Icon name="nav" size={13} /> NAV
+          <dt className="vault__label" title={termTitle("nav")}>
+            <Icon name="nav" size={13} /> NAV · 基金总值
           </dt>
           <dd>
             <span className="vault__val od-nowrap">
@@ -173,7 +174,7 @@ export function BookScreen({ data }: { data: ConsoleData }) {
                     USDC
                   </th>
                   <th scope="col" className="r">
-                    目标 → 实际 bps
+                    目标 → 实际占比
                   </th>
                   <th scope="col">计划哈希</th>
                 </tr>
@@ -211,10 +212,9 @@ export function BookScreen({ data }: { data: ConsoleData }) {
                             : "—"}
                     </td>
                     <td className="r num">
-                      {/* 字段名就是 bps（1500 = 15%），不能再带 % —— 否则显示成 1500% */}
-                      {r.targetWethBps === null ? "—" : `${r.targetWethBps} → `}
-                      {r.actualWethBps === null ? "—" : `${r.actualWethBps}`}
-                      <span className="unit"> bps</span>
+                      {/* 字段存的是 bps（1500 = 15%），先换算成百分比再显示，否则会是 1500% */}
+                      {r.targetWethBps === null ? "—" : `${percentOf(r.targetWethBps)} → `}
+                      {r.actualWethBps === null ? "—" : percentOf(r.actualWethBps)}
                     </td>
                     <td className="num">{r.planHash ? shortHex(r.planHash, 8, 4) : "—"}</td>
                   </tr>

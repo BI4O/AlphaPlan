@@ -8,6 +8,8 @@ import { alphaPlanVaultAbi } from "@/lib/abi/alphaPlanVault";
 import { erc20Abi, describeRevert, STEP_LABEL } from "@/lib/wallet/tx";
 import { localChain } from "@/lib/wallet/chain";
 
+import { useIsClient } from "@/lib/use-is-client";
+
 import { human, useFundData } from "./use-fund-data";
 
 /**
@@ -59,6 +61,15 @@ export function FundActions({
   const [nonce, setNonce] = useState(0);
 
   const { address, isConnected } = useAccount();
+  /*
+    钱包状态只在客户端存在：服务端渲染时 isConnected 恒为 false，
+    hydrate 后立刻变 true。所以「连没连」这个判断不能直接用 ——
+    那会让服务端渲染一个分支、客户端渲染另一个，React 报 hydration mismatch。
+    先用 isClient 把两边对齐到「未就绪」，等挂载后再说真话。
+  */
+  const isClient = useIsClient();
+  /** 真的可以按钱包状态渲染了吗。服务端与 hydration 期间都是 false。 */
+  const walletKnown = isClient && isConnected;
   const publicClient = usePublicClient({ chainId: localChain.id });
   const { writeContractAsync } = useWriteContract();
 
@@ -295,25 +306,32 @@ export function FundActions({
             <div>
               <dt>钱包 {assetSymbol}</dt>
               <dd className="mono">
-                {isConnected
-                  ? (human(fund.usdcBalance, decimals) ?? "—")
-                  : "—"}
+                {walletKnown ? (human(fund.usdcBalance, decimals) ?? "—") : "—"}
               </dd>
             </div>
             <div>
               <dt>已授权给金库</dt>
               <dd className="mono">
-                {!isConnected
-                  ? "—"
-                  : fund.allowance === null
-                    ? "读取失败"
-                    : `${human(fund.allowance, decimals)} ${assetSymbol}`}
+                {!walletKnown ? (
+                  "—"
+                ) : fund.loading ? (
+                  // 还在读就说「读取中」。之前这里会落到「读取失败」——
+                  // hydration bug 的另一半正是这个：null 同时表示
+                  // 「没连」「还没读」「读失败」三件事，UI 把它们读成同一件。
+                  <span className="trade__state">读取中…</span>
+                ) : fund.readError ? (
+                  <span className="trade__state" data-tone="warn" title={fund.readError}>
+                    读取失败
+                  </span>
+                ) : (
+                  `${human(fund.allowance, decimals)} ${assetSymbol}`
+                )}
               </dd>
             </div>
             <div>
               <dt>本次需要</dt>
               <dd>
-                {!isConnected ? (
+                {!walletKnown ? (
                   <span className="trade__state">连接钱包后可见</span>
                 ) : parsed === null ? (
                   <span className="trade__state">填入数量后可见</span>
@@ -334,13 +352,13 @@ export function FundActions({
             <div>
               <dt>持有份额</dt>
               <dd className="mono">
-                {isConnected ? (human(heldShares, shareDecimals) ?? "—") : "—"} {shareSymbol}
+                {walletKnown ? (human(heldShares, shareDecimals) ?? "—") : "—"} {shareSymbol}
               </dd>
             </div>
             <div>
               <dt>现在可赎回</dt>
               <dd className="mono">
-                {!isConnected ? (
+                {!walletKnown ? (
                   "—"
                 ) : fund.redeemLimitError ? (
                   <span className="trade__state" data-tone="warn" title={fund.redeemLimitError}>
@@ -398,7 +416,7 @@ export function FundActions({
         disabled={blocked}
         onClick={() => void run()}
       >
-        {!isConnected
+        {!walletKnown
           ? "先连接钱包"
           : busy
             ? "处理中…"

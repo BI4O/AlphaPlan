@@ -2,10 +2,11 @@
 
 import { useAppKit, useAppKitAccount, useAppKitNetwork, useDisconnect } from "@reown/appkit/react";
 import { AlertTriangle, ChevronDown, Wallet, X } from "lucide-react";
-import { useEffect, useSyncExternalStore, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatUnits } from "viem";
 import { useBalance } from "wagmi";
 
+import { useIsClient } from "@/lib/use-is-client";
 import { LOCAL_RPC, REOWN_PROJECT_ID, isLocalRpc, localChain } from "@/lib/wallet/chain";
 
 function shortAddr(addr?: string) {
@@ -68,16 +69,6 @@ export function ConnectButton() {
  *
  * 占位与 .btn-connect 同尺寸，避免挂载那一刻顶栏跳动。
  */
-const noopSubscribe = () => () => {};
-
-function useIsClient() {
-  return useSyncExternalStore(
-    noopSubscribe,
-    () => true,   // 浏览器
-    () => false,  // 服务端 / hydration 前
-  );
-}
-
 function ConnectButtonGate() {
   const mounted = useIsClient();
   if (!mounted) {

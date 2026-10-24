@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T08:11:08Z",
+  "asOf": 1792829468,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 3500,
+      "confidence": 0.58,
+      "reason": "ETH's +5.26% against BTC's -2.82% is roughly 8 points of relative outperformance, a genuine idiosyncratic bid that justifies moving the vault off 0 bps toward a meaningful WETH position. But BTC's decline signals broad risk-asset weakness that can drag ETH down, so I cap the target at 35% rather than approaching the 60% limit."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 600,
+      "confidence": 0.6,
+      "reason": "ETH's +5.26% day against BTC's -2.82% is a sharp, unconfirmed divergence — ETH strength without BTC participation tends to mean-revert, and a single-session 5%+ spike raises pullback risk. With allocation already at 0 bps, keep WETH exposure minimal at 6% rather than chasing the move."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.8,
+      "reason": "ETH +5.26% while BTC -2.82% shows elevated volatility and cross-market divergence; with the vault already at 0 bps WETH, holding zero exposure minimizes drawdown risk."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 1500,
+    "confidence": 0.55,
+    "rationale": "ETH's +5.26% while BTC fell -2.82% is genuine relative strength, but a single-session divergence raises reversal risk, so I set a modest 15% WETH allocation. I discount the risk agent's zero target because its 0.8 confidence is not evidence-based about sizing, making the final slightly above the raw mean of 1367 bps."
+  }
+}

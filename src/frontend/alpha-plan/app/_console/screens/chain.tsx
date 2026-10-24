@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { percentOf, signedPoints } from "@/lib/format";
+
 import { WalkthroughBar } from "../walkthrough-bar";
 import { Icon } from "../icons";
 import type { ConsoleData } from "../types";
@@ -157,11 +159,11 @@ const INITIAL_NODES: WfNode[] = [
   { id: "http", x: 265, y: ROW1_Y, w: 130, h: ROW_H, tier: "intake", tag: "HTTP", title: "取回计划字节", meta: "—" },
   // 最长行 0x1f4a…9c02 = 92.4（标题 keccak256 66.6）→ 114，给 118
   { id: "hash", x: 415, y: ROW1_Y, w: 118, h: ROW_H, tier: "intake", tag: "CODE", title: "keccak256", meta: "—" },
-  // 最长行 10,000 bps = 84（标题 看多 28）→ 106，给 112
+  // 最长行 100%（标题 看多 28）→ 62，给 112（原来放「10,000 bps」时是 106，留了余量）
   { id: "bull", x: AGENT1_X, y: ROW1_Y, w: AGENT_W, h: ROW_H, tier: "agent", tag: "AGENT", title: "看多", meta: "—" },
   { id: "bear", x: AGENT2_X, y: ROW1_Y, w: AGENT_W, h: ROW_H, tier: "agent", tag: "AGENT", title: "看空", meta: "—" },
   { id: "risk", x: AGENT3_X, y: ROW1_Y, w: AGENT_W, h: ROW_H, tier: "agent", tag: "AGENT", title: "风控", meta: "—" },
-  // 最长行 10,000 bps · -1,234 = 159.6（标题 裁决 · 不取平均 98）→ 182，给 186
+  // 最长行 100% · +12 个百分点 ≈ 145，标题 裁决 · 不取平均 98 → 给 186（沿用原宽度，有余量）
   { id: "judge", x: JUDGE_X, y: ROW2_Y, w: JUDGE_W, h: ROW_H, tier: "judge", tag: "JUDGE", title: "裁决 · 不取平均", meta: "—" },
   // 最长行 放行（由执行事件推断）= 154（标题 门禁 28）→ 176，给 184
   { id: "gate", x: COL_X, y: ROW1_Y, w: COL_W, h: ROW_H, tier: "commit", tag: "GATE", title: "门禁", meta: "—" },
@@ -683,8 +685,8 @@ function withLiveValues(base: WfNode[], data: ConsoleData): WfNode[] {
   const bpsOf = (agent: string) =>
     rounds.find((r) => r.agent === agent)?.targetWethBps ?? null;
 
-  const fmtBps = (v: number | null) =>
-    v === null ? "未采集" : `${v.toLocaleString("en-US")} bps`;
+  // 画布格子里放的是「占比」，一律百分比；原始 bps 留给计划文件与账本对账
+  const fmtBps = (v: number | null) => (v === null ? "未采集" : percentOf(v));
 
   /**
    * 每个节点的 meta 只写**真的读到过**的东西。
@@ -705,7 +707,7 @@ function withLiveValues(base: WfNode[], data: ConsoleData): WfNode[] {
     judge:
       final === null
         ? "未采集"
-        : `${final.toLocaleString("en-US")} bps${mean !== null ? ` · ${fmtDeviation(final - mean)}` : ""}`,
+        : `${percentOf(final)}${mean !== null ? ` · ${fmtDeviation(final - mean)}` : ""}`,
     // 有执行事件 = 门禁放行过（推断，不是读数）
     gate: exec ? "放行（由执行事件推断）" : "未采集",
     write: exec ? `区块 ${exec.blockNumber}` : "未采集",
@@ -721,18 +723,15 @@ function withLiveValues(base: WfNode[], data: ConsoleData): WfNode[] {
 }
 
 /**
- * 裁决与均值的偏差，取整。
+ * 裁决与均值的偏差。
  *
  * 之前直接把 `final - mean` 插进模板串，浮点中间值原样进了 DOM：
  * `1,300 bps · -466.66666666666674`。那是把计算过程摊在读数位置上 ——
- * 这个位置只该有一个能复核的整数。取整后这一行也从 30 字符缩到 16，
- * 不再是那张表里最宽的一行。
+ * 这个位置只该有一个能复核的数。这里统一交给 `signedPoints` 取整，
+ * 并带上「个百分点」这个单位，免得和上面的占比混成一种数。
  */
 function fmtDeviation(dev: number) {
-  const rounded = Math.round(dev);
-  // 四舍五入到 0 不写符号：+0 是错的，-0 更错
-  if (rounded === 0) return "0";
-  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+  return signedPoints(dev);
 }
 
 function shortHash(h: string) {

@@ -1,5 +1,6 @@
 import { readVaultSnapshot } from "@/lib/chain";
 import { readDebate } from "@/lib/debate";
+import { percentOf, signedPoints } from "@/lib/format";
 import { readHistory, type HistoryResult } from "@/lib/history";
 import {
   findPlanByHash,
@@ -213,7 +214,7 @@ export async function loadConsoleData(): Promise<ConsoleData> {
       no: "05",
       name: "AI 共识",
       detail: debate.ok
-        ? `裁决 ${debate.view.final?.targetWethBps ?? "—"} bps · 偏离 ${debate.view.delta ?? "—"}`
+        ? `裁决 ETH 占比 ${percentOf(debate.view.final?.targetWethBps)} · 偏离均值 ${signedPoints(debate.view.delta)}`
         : debate.reason,
       state: debate.ok ? "done" : "issue",
       stateLabel: debate.ok ? "已读取" : "失败",

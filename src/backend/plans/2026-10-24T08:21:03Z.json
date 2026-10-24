@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T08:21:03Z",
+  "asOf": 1792830063,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 4800,
+    "ethUsd24hPct": 36.6909,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20.8837,
+      "wethBps": 1859
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 3200,
+      "confidence": 0.62,
+      "reason": "ETH's +36.69% 24h move against BTC's -2.82% signals strong ETH-specific leadership, and the vault's 1859 bps allocation leaves room to add. The parabolic move and BTC weakness argue for a measured overweight rather than the 6000 bps cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 1000,
+      "confidence": 0.78,
+      "reason": "ETH's +36.7% 24h spike to $4,800 alongside BTC's -2.8% decline to $80,788 signals a narrow, overheated rally rather than broad risk-on health; trimming WETH from 18.59% to 10% locks in gains and reduces reversal risk."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 1200,
+      "confidence": 0.72,
+      "reason": "ETH's +36.69% 24h move is extreme while BTC is -2.82%, indicating high volatility and cross-market disagreement that raises reversal/drawdown risk for a WETH-heavy vault. Reducing from the current 18.59% WETH allocation to 12% limits exposure while keeping a modest position."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 1711,
+    "confidence": 0.65,
+    "rationale": "I weight the higher-confidence bear and risk views more heavily because their reading of ETH's +36.7% spike against falling BTC as elevated reversal risk is at least as supported as the bull's one-day leadership call. The resulting target of 1711 bps is slightly below the raw mean of 1800 bps, reflecting that consensus of caution."
+  }
+}

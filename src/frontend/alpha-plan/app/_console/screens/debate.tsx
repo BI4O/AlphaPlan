@@ -1,3 +1,6 @@
+import { percentOf, pointsOf, rawBps, signedPoints } from "@/lib/format";
+import { termTitle } from "@/lib/terms";
+
 import { Icon } from "../icons";
 import type { ConsoleData } from "../types";
 
@@ -68,14 +71,17 @@ export function DebateScreen({ data }: { data: ConsoleData }) {
           <>
             {spread !== null ? (
               <>
-                三个 agent 的目标仓位相差 <strong>{spread} bps</strong>。
+                三个 agent 的目标仓位相差 <strong>{pointsOf(spread)}</strong>
+                {spread > 0 && <span className="unit">（{rawBps(spread)}）</span>}。
               </>
             ) : null}
             {final !== null && delta !== null ? (
               <>
                 {" "}
-                裁决落在 <strong>{final} bps</strong>，比算术均值
-                {delta === 0 ? "相同" : ` ${delta > 0 ? "高" : "低"} ${Math.abs(delta)} bps`}{" "}
+                裁决让 ETH 占 <strong>{percentOf(final)}</strong>（{rawBps(final)}），比算术均值
+                {delta === 0
+                  ? "相同"
+                  : ` ${delta > 0 ? "高" : "低"} ${pointsOf(delta)}`}{" "}
                 —— 这是本页最需要你自己判断的一处。
               </>
             ) : null}
@@ -92,21 +98,24 @@ export function DebateScreen({ data }: { data: ConsoleData }) {
                 <span className="agent__code">{r.agent}</span>
               </h3>
               <p className="agent__pos">
-                <span className="agent__bps">
-                  {r.bps === null ? "—" : r.bps.toLocaleString("en-US")}
+                <span className="agent__bps" title={termTitle("bps")}>
+                  {r.bps === null ? "—" : percentOf(r.bps)}
                 </span>
-                <span className="unit">bps</span>
+                <span className="unit">{r.bps === null ? "" : rawBps(r.bps)}</span>
               </p>
               <p className="agent__delta">
                 <span>较裁决</span>{" "}
-                {r.vsFinal === null
-                  ? "—"
-                  : `${r.vsFinal > 0 ? "+" : ""}${r.vsFinal}`}
+                {r.vsFinal === null ? "—" : signedPoints(r.vsFinal)}
               </p>
               <div className="conf">
                 <div className="conf__top">
-                  <span className="conf__label">
-                    <Icon name="exposure" size={13} /> 信心
+                  {/*
+                    0.62 是模型在 prompt 里自报的把握，不是校准过的概率，也不进合约。
+                    上面的 40% 是占比 —— 两个数并排，必须把这件事写出来，
+                    否则「0.62」会被读成「62% 会涨」。
+                  */}
+                  <span className="conf__label" title="模型自报的把握，不是上涨概率；不进合约、不影响执行。">
+                    <Icon name="exposure" size={13} /> 信心（自评）
                   </span>
                   <span className="num">
                     {r.confidence === null ? "—" : r.confidence.toFixed(2)}
@@ -115,10 +124,11 @@ export function DebateScreen({ data }: { data: ConsoleData }) {
                 <div
                   className="bar"
                   role="img"
-                  aria-label={`信心 ${r.confidence ?? "未采集"}`}
+                  aria-label={`信心自评 ${r.confidence ?? "未采集"}，不是概率`}
                 >
                   <i style={{ width: `${(r.confidence ?? 0) * 100}%` }} />
                 </div>
+                <p className="conf__note">模型自报，非概率</p>
               </div>
               <p className="agent__why">{r.reason ?? "（该 agent 未给出理由）"}</p>
             </article>
@@ -134,41 +144,37 @@ export function DebateScreen({ data }: { data: ConsoleData }) {
               <Icon name="decision" size={13} /> {view.final?.model ?? "—"}
             </span>
           </div>
-          <p className="judge__pos">
-            <span className="judge__bps">
-              {final === null ? "—" : final.toLocaleString("en-US")}
-            </span>
-            <span className="unit">bps</span>
-          </p>
+          {/*
+            主值是「占比」，用百分比 —— 这是给人看的界面，bps 只是合约里的存储单位。
+            原始整数放在下面一行，留着给人核对文件。
+          */}
+          <div className="judge__pos">
+            <p className="judge__label">目标 ETH 占比</p>
+            <p className="judge__pct" title={termTitle("bps")}>
+              <span className="judge__bps">{percentOf(final)}</span>
+              {final !== null && <span className="judge__raw">{rawBps(final)}</span>}
+            </p>
+          </div>
           <div className="judge__dev">
             <span className="unit">与算术平均的偏离</span>
-            <span className="judge__dev-val">
-              <span>
-                {delta === null ? "—" : `${delta > 0 ? "+" : ""}${delta.toLocaleString("en-US")}`}
-              </span>
-              <span className="unit">bps</span>
-            </span>
+            <span className="judge__dev-val">{signedPoints(delta)}</span>
           </div>
           <ul className="calc">
             <li>
               <span>看多 / 看空 / 风控</span>
               <span className="num">
                 {rounds
-                  .map((r) => (r.bps === null ? "—" : r.bps.toLocaleString("en-US")))
+                  .map((r) => (r.bps === null ? "—" : percentOf(r.bps)))
                   .join(" · ")}
               </span>
             </li>
             <li>
               <span>算术平均</span>
-              <span className="num">
-                {mean === null ? "—" : mean.toLocaleString("en-US")}
-              </span>
+              <span className="num">{percentOf(mean)}</span>
             </li>
             <li>
               <b>裁决</b>
-              <span className="num">
-                {final === null ? "—" : final.toLocaleString("en-US")}
-              </span>
+              <span className="num">{percentOf(final)}</span>
             </li>
           </ul>
           <p className="judge__why">{view.final?.rationale ?? "（judge 未给出理由）"}</p>
@@ -338,7 +344,7 @@ function Ruler({
 
   // 2) 分上下两组：裁决组与均值组优先占下方/上方，其余按位置装箱
   const labelOf = (p: Point) => {
-    const val = p.bps.toLocaleString("en-US");
+    const val = percentOf(p.bps);
     // 裁决与均值是这一屏的主角，名字写全；同值的 agent 跟在后面
     const names = [...p.names];
     if (p.isFinal) names.push("裁决");
@@ -371,7 +377,7 @@ function Ruler({
         <h2 className="panel-title" id="ruler-h">
           同一根轴上的三个意见
         </h2>
-        <p className="mono-meta">单位 bps · 0 = 空仓，10 000 = 满仓</p>
+        <p className="mono-meta">ETH 占金库总资产的比例 · 0% = 全现金，100% = 全 WETH</p>
       </div>
 
       <svg
@@ -380,16 +386,16 @@ function Ruler({
         role="img"
         aria-label={`仓位标尺：${points
           .map((p) => `${labelOf(p)}`)
-          .join("、")}，单位 bps。同值已合并为一个标记。`}
+          .join("、")}，均为 ETH 占比。同值已合并为一个标记。`}
       >
         <line className="axis" x1={X0} y1={AXIS_Y} x2={X1} y2={AXIS_Y} />
         <line className="tick" x1={X0} y1={94} x2={X0} y2={106} />
         <line className="tick" x1={X1} y1={94} x2={X1} y2={106} />
         <text className="dim" x={X0} y={124} textAnchor="middle">
-          0
+          0%
         </text>
         <text className="dim" x={X1} y={124} textAnchor="middle">
-          10 000
+          100%
         </text>
 
         {points.map((p) => {
@@ -446,8 +452,7 @@ function Ruler({
               y={bracketY + 30}
               textAnchor="middle"
             >
-              {delta > 0 ? "+" : "−"}
-              {Math.abs(delta).toLocaleString("en-US")}
+              {signedPoints(delta)}
             </text>
           </>
         ) : null}
@@ -463,7 +468,7 @@ function Ruler({
               <span className="track">
                 <b style={{ width: `${(p.bps / 10000) * 100}%` }} />
               </span>
-              <span className="num">{p.bps.toLocaleString("en-US")}</span>
+              <span className="num">{percentOf(p.bps)}</span>
             </li>
           ))}
       </ul>

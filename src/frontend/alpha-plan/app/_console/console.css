@@ -737,6 +737,8 @@ h2.panel-title {
   overflow: hidden;
 }
 .bar > i { display: block; height: 100%; background: var(--indigo); }
+/* 「信心」是模型自评，不是概率 —— 紧挨着上面的占比数字，必须写死这句话 */
+.conf__note { font-size: var(--fs-meta); color: var(--ash); }
 .agent__why {
   font-size: var(--fs-meta);
   line-height: 1.55;
@@ -763,7 +765,12 @@ h2.panel-title {
   border-bottom: var(--hair);
   padding-bottom: 12px;
 }
-.judge__pos { display: flex; align-items: baseline; gap: 8px; flex-wrap: nowrap; }
+.judge__pos { display: grid; gap: 4px; }
+.judge__label {
+  font-size: var(--fs-meta);
+  color: var(--ash);
+}
+.judge__pct { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .judge__bps {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -771,6 +778,8 @@ h2.panel-title {
   font-weight: 500;
   line-height: 1;
 }
+/* 原始整数 bps 是给核对文件用的副值，不能和主值抢注意力 */
+.judge__raw { font-family: var(--mono); font-size: var(--fs-meta); color: var(--ash); }
 .judge__dev { display: grid; gap: 4px; border-bottom: var(--hair); padding-bottom: 14px; }
 .judge__dev-val {
   display: flex;
@@ -2543,4 +2552,54 @@ h2.panel-title {
   color: var(--ash);
   margin: 14px 0 0;
   max-width: 68ch;
+}
+
+/* 「已就绪 / 不可用」提示 —— 演示面板里避免白等和点了才失败 */
+.demo__ready {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  /* 状态色只做点缀，整行不染 —— 满屏红的演示面板像故障页 */
+  color: var(--ink);
+}
+
+.demo__ready[data-tone="ok"] {
+  background: color-mix(in oklab, var(--success) 8%, var(--paper));
+}
+
+.demo__ready[data-tone="bad"] {
+  background: color-mix(in oklab, var(--warning) 10%, var(--paper));
+}
+
+.demo__ready-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 6px;
+}
+
+.demo__ready[data-tone="ok"] .demo__ready-dot {
+  background: var(--success);
+}
+
+.demo__ready[data-tone="bad"] .demo__ready-dot {
+  background: var(--warning);
+}
+
+/* 缩写标记 —— 中文主标签后面跟一个小的英文缩写，hover 出完整定义。
+   给人看的界面不该假设读者知道 NAV，但缩写也不能全删：懂的人靠它定位。 */
+.kpi__abbr {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--ash);
+  margin-left: 6px;
+  cursor: help;
+  border-bottom: 1px dotted var(--rule);
 }
