@@ -1084,27 +1084,31 @@ contract AlphaPlanVaultTest is Test {
         vault.redeem(60e6, ALICE, ALICE);
     }
 
+    /// @dev 真·卖光也不够：缺口 > 全部 WETH 价值。
+    ///      注意 `redeem` 的资产上限就是 NAV（= 现金 + WETH 价值），所以缺口恒等于
+    ///      `wethValue - 1`，**redeem 路径永远够**。要触发这条必须用 `withdraw`
+    ///      指定一个超过 NAV 的资产数。判据是「缺口 vs WETH 价值」，
+    ///      不是「全仓折价 vs 总资产」（后者会永久差 50bps 手续费，见 P0 修复）。
     function test_A11d_RevertsWithCustomErrorWhenWethCannotCover() public {
         _mintWethToVault(0.04e18); // cash 100e6 + WETH 80e6 = nav 180e6
-        uint256 assets = vault.previewRedeem(100e6);
-        uint256 cash = usdc.balanceOf(address(vault));
+        uint256 cash = usdc.balanceOf(address(vault)); // 100e6
         uint256 wethValue = 80e6;
+        uint256 assets = 200e6; // 缺口 100e6 > WETH 价值 80e6 → 必须拒
         vm.prank(ALICE);
         vm.expectRevert(
             abi.encodeWithSelector(AlphaPlanVault.InsufficientLiquidity.selector, assets, cash, wethValue)
         );
-        vault.redeem(100e6, ALICE, ALICE);
+        vault.withdraw(assets, ALICE, ALICE);
     }
 
     // A11g：卖光 WETH 也不够时，预检必须在下单**之前**拦住，一个 swap 都不能发生
     function test_A11g_NoSwapWhenWethCannotCover() public {
         _mintWethToVault(0.04e18); // 现金 100e6 + WETH 值 80e6 → nav 180e6
 
-        uint256 assets = vault.previewRedeem(100e6); // ≈179,999,999
         uint256 cash = usdc.balanceOf(address(vault)); // 100e6
         uint256 wethValue = 80e6;
-        uint256 realizable = wethValue * (BPS - 50) / BPS; // 79.6e6
-        assertLt(cash + realizable, assets, unicode"前置：卖光也不够");
+        uint256 assets = 200e6; // 缺口 100e6 > WETH 价值 → 预检必须拦住
+        assertGt(assets - cash, wethValue, unicode"前置：缺口大于 WETH 总价值");
 
         uint256 supplyBefore = vault.totalSupply();
         uint256 sharesBefore = vault.balanceOf(ALICE);
@@ -1114,7 +1118,7 @@ contract AlphaPlanVaultTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(AlphaPlanVault.InsufficientLiquidity.selector, assets, cash, wethValue)
         );
-        vault.redeem(100e6, ALICE, ALICE);
+        vault.withdraw(assets, ALICE, ALICE);
 
         assertEq(router.callCount(), 0, unicode"预检在 for 循环之前：不白跑 swap");
         assertEq(vault.totalSupply(), supplyBefore, unicode"份额未销毁");
@@ -1194,6 +1198,59 @@ contract AlphaPlanVaultTest is Test {
         uint256 got = vault.redeem(100e6, ALICE, ALICE);
         assertEq(got, promised, unicode"清仓后全额赎回成功");
         assertLe(usdc.balanceOf(address(vault)), 2, unicode"只可能剩换算 dust");
+    }
+
+    // ==================================================================
+    // P0 回归：最后一个持有人必须能全部退出
+    // ==================================================================
+
+    /// @dev reviewer 挖出的 P0：旧 `_ensureLiquidity` 拿「全仓 WETH 按 50bps 折价」
+    ///      去比总资产，而池子收 0.3%，所以「卖光刚好够」数学上不成立 ——
+    ///      持着 WETH 时 `redeem(balanceOf(owner))` 必然 revert。
+    ///      修法是把准入判定改成对「本次缺口」。
+    function test_P0_LastHolderCanFullyRedeem() public {
+        _mintWethToVault(0.04e18); // 现金 100e6 + WETH 80e6，nav 180e6
+
+        uint256 shares = vault.balanceOf(ALICE);
+        uint256 promised = vault.previewRedeem(shares);
+
+        vm.prank(ALICE);
+        uint256 got = vault.redeem(shares, ALICE, ALICE);
+
+        assertEq(got, promised, unicode"全部退出成功，金额 == previewRedeem");
+        assertEq(vault.balanceOf(ALICE), 0, unicode"份额清零");
+        assertEq(usdc.balanceOf(address(vault)), 0, unicode"现金全付清");
+        // 残留只允许是 dust（< 1 USDC 等值）：池子 0.3% 手续费导致最后一次补卖
+        // 会略微超额，多出来的那点是换算 dust，不是资产漏出。
+        uint256 dust = vault.usdcValueOfWethExposed(weth.balanceOf(address(vault)), PRICE);
+        assertLt(dust, 1e6, unicode"WETH 残留 < 1 USDC 等值");
+    }
+
+    /// @dev 同一 bug 的另一个表现：先点 max 再点剩下那部分，旧实现会让剩余份额永久锁死
+    function test_P0_MaxThenRemainderIsNotStuck() public {
+        _mintWethToVault(0.04e18);
+
+        uint256 max1 = vault.maxRedeem(ALICE);
+        vm.prank(ALICE);
+        vault.redeem(max1, ALICE, ALICE);
+
+        uint256 left = vault.balanceOf(ALICE);
+        assertGt(left, 0, unicode"确实还剩一部分");
+
+        vm.prank(ALICE);
+        vault.redeem(left, ALICE, ALICE);
+        assertEq(vault.balanceOf(ALICE), 0, unicode"剩余份额可以取回，没有被锁死");
+        assertLt(vault.usdcValueOfWethExposed(weth.balanceOf(address(vault)), PRICE), 1e6);
+    }
+
+    /// @dev ERC-4626 规定 maxWithdraw/maxRedeem MUST NOT revert —— feed 陈旧时也不行
+    function test_P0_MaxViewsDoNotRevertOnStaleFeed() public {
+        _mintWethToVault(0.04e18);
+        vm.warp(block.timestamp + 2 hours); // MAX_FEED_STALENESS = 1h
+
+        uint256 cash = usdc.balanceOf(address(vault));
+        assertEq(vault.maxWithdraw(ALICE), cash, unicode"回退到纯现金口径");
+        assertEq(vault.maxRedeem(ALICE), cash, unicode"回退到纯现金口径");
     }
 
     // ==================================================================

@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:11:27Z",
+  "asOf": 1792825887,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 2500,
+      "confidence": 0.6,
+      "reason": "ETH is up 5.26% to $3,696.39 while BTC is down 2.82% to $80,788.48, suggesting near-term rotation into ETH, and the vault's 0 bps WETH allocation leaves room to add exposure. I would build to 2500 bps rather than max out given the limited 24h signal and $20 NAV."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 750,
+      "confidence": 0.55,
+      "reason": "ETH is up 5.26% in 24h while BTC is down 2.82% — a divergence that often mean-reverts, so chasing this pop at $3,696 is poor risk/reward. Vault is already at 0 bps WETH on only $20 NAV, so staying near-zero exposure costs little and preserves the option to buy a confirmed trend rather than a single-day squeeze."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.85,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, indicating elevated cross-asset volatility; with a $20 NAV and 0 bps WETH currently, preserving liquidity outweighs chasing the ETH move."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 956,
+    "confidence": 0.6,
+    "rationale": "The confidence-weighted average is 956 bps, below the simple mean of 1083 bps because the risk agent's 0.85 confidence pulls the target down. No agent's reasoning was clearly unsupported, so I applied the stated confidences."
+  }
+}

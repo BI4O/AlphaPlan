@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:20:12Z",
+  "asOf": 1792826412,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 3500,
+      "confidence": 0.62,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, an ~8pt divergence that points to ETH-specific demand rather than a broad rally, and the vault sits at 0 bps WETH so there is full room to add. The size of the move and BTC's weakness argue for a meaningful but not aggressive allocation rather than the 60% cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.7,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, an unconfirmed and divergent rally that argues against adding risk; with the vault already at 0 bps WETH, staying at 0 is appropriate."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 1000,
+      "confidence": 0.72,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, signaling elevated volatility and cross-asset disagreement; I would keep WETH exposure low at 1000 bps to limit drawdown risk while acknowledging WETH liquidity is generally strong."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 1500,
+    "confidence": 0.6,
+    "rationale": "ETH's 5.26% gain against BTC's 2.82% decline supports adding WETH, but the single-day divergence is not enough to justify bull's 35% or bear's zero. I discount bear's status-quo reliance and risk's overemphasis on volatility, landing on a modest 1500 bps."
+  }
+}

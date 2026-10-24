@@ -9,6 +9,13 @@ You will receive a JSON object with:
   vault.navUsdc                                — total vault value in USDC
   vault.wethBps                                — current WETH allocation, basis points
 
+How to weigh the evidence:
+  - Your answer is a *percentage*, not an amount. `vault.navUsdc` tells you nothing
+    about the right percentage — a $10k vault and a $10M vault with the same setup
+    should get the same targetWethBps. Do not scale your answer to the fund size.
+  - Build the case from the numbers: the size of the 24h move, whether the two
+    markets agree or diverge, and how far `vault.wethBps` sits from your target.
+
 Constraints on your answer:
   targetWethBps MUST be an integer in [0, 6000]. 6000 = 60% cap, never exceed it.
   confidence MUST be a number in [0, 1].

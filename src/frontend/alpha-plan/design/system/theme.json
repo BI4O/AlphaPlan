@@ -1,0 +1,25 @@
+{
+  "token": {
+    "colorPrimary": "#42508c",
+    "colorSuccess": "#40614D",
+    "colorWarning": "#7F5B30",
+    "colorError": "#86463A",
+    "colorInfo": "#42508c",
+    "colorTextBase": "#1e253d",
+    "colorBgBase": "#faf8f3",
+    "fontFamily": "Inter, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji'",
+    "fontFamilyCode": "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
+    "fontSize": 16,
+    "borderRadius": 8,
+    "sizeUnit": 4,
+    "sizeStep": 4,
+    "controlHeight": 44,
+    "lineWidth": 1,
+    "motionUnit": 0.1,
+    "motionBase": 0,
+    "wireframe": false,
+    "motion": true,
+    "colorLink": "#42508C"
+  },
+  "algorithm": "default"
+}

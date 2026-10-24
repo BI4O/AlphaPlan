@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:34:49Z",
+  "asOf": 1792827289,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 4788.53,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 10.4326,
+      "wethBps": 3713
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 4300,
+      "confidence": 0.55,
+      "reason": "ETH's +5.26% 24h move against BTC's -2.82% shows genuine ETH-specific leadership, supporting a modest increase from the current 3713 bps toward 4300. But the sharp BTC/ETH divergence signals a fragile, rotation-driven tape rather than broad risk-on, so I cap the add well below the 6000 ceiling."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.65,
+      "reason": "ETH is +5.26% while BTC is -2.82%, a sharp divergence that often signals unstable, mean-reverting conditions; trimming from 3713 bps to 3000 bps reduces risk while keeping a core ETH position."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.68,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, an 8.1pp divergence that signals elevated volatility and correlation breakdown; trimming WETH from 37.13% to 30% reduces drawdown risk while retaining meaningful exposure."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 3500,
+    "confidence": 0.5,
+    "rationale": "The confidence-weighted mean is ~3380, but bear and risk share the same weak premise that a one-day BTC/ETH divergence implies instability, so I discount that shared view and land at 3500 bps. The data supports some ETH strength but not enough to justify the bull's full 4300 bps."
+  }
+}

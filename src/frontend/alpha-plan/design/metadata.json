@@ -1,0 +1,14 @@
+{
+  "title": "Quaestor · 司库",
+  "category": "Brands",
+  "surface": "web",
+  "status": "published",
+  "artifactMode": "agent-managed",
+  "createdAt": "2026-10-23T14:39:58.940Z",
+  "updatedAt": "2026-10-23T15:32:36.539Z",
+  "provenance": {
+    "companyBlurb": "Quaestor（司库）是一个替你管钱的个人 agent：把散落在券商、钱包和交易所里的资产收拢成一本可读的账，替你盯住自己定下的纪律，并在动用任何一笔钱之前先解释清楚。它说话像一位基金经理助理——先结论，再依据，最后只留下你需要决定的那一件事。",
+    "sourceNotes": "Extracted from designmd://personal-agent-super"
+  },
+  "projectId": "brand-personal-agent-super-6ebbb0"
+}

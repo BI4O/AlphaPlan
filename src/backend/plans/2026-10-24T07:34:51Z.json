@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:34:51Z",
+  "asOf": 1792827291,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 4788.53,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 10.4326,
+      "wethBps": 3713
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 4800,
+      "confidence": 0.62,
+      "reason": "ETH +5.26% while BTC -2.82% is an ~8pt divergence pointing to ETH-specific demand, not broad beta, which justifies adding to the current 3713 bps position. I'd move to 4800 rather than the 6000 cap because the move is already extended intraday and a single-day spread can mean-revert."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.7,
+      "reason": "ETH's +5.26% 24h surge to $4,788.53 diverges sharply from BTC's -2.82% drop, a sign of fragile, rotation-driven risk appetite. With WETH already at 37.13% of NAV, trimming to 30% reduces exposure to a possible ETH mean-reversion."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 3000,
+      "confidence": 0.55,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, a divergent high-volatility tape that argues for trimming WETH from the current 3713 bps toward 3000 bps to limit drawdown risk. The data supports a moderately defensive posture, but only 24h moves are available, so confidence is moderate."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 4000,
+    "confidence": 0.5,
+    "rationale": "I discount the two 3000 targets because they share a weak premise that a single 24h ETH/BTC divergence signals fragility rather than relative strength. This pushes my final number above the 3600 raw weighted mean, but I temper the bull's 4800 to 4000 given the limited data and acknowledged mean-reversion risk."
+  }
+}

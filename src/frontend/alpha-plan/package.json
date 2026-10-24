@@ -1,0 +1,35 @@
+{
+  "name": "alpha-plan",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/gen-abi.mjs && next dev",
+    "build": "node scripts/gen-abi.mjs && next build",
+    "start": "node --env-file=.env.local node_modules/next/dist/bin/next start",
+    "lint": "eslint",
+    "gen:abi": "node scripts/gen-abi.mjs",
+    "check:abi": "node scripts/gen-abi.mjs --check"
+  },
+  "dependencies": {
+    "@reown/appkit": "^1.8.24",
+    "@reown/appkit-adapter-wagmi": "^1.8.24",
+    "@tanstack/react-query": "^5.104.5",
+    "lucide-react": "^1.61.0",
+    "next": "16.4.2",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "viem": "^2.57.10",
+    "wagmi": "^3.7.9"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.2",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "packageManager": "pnpm@12.6.0"
+}

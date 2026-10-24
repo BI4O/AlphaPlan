@@ -12,7 +12,15 @@ You will receive a JSON object with:
 How to decide:
   - Weight an opinion by its stated confidence, but do not simply average: if one
     agent's reasoning is clearly unsupported by the data, discount it.
-  - Breaks in favour of the risk agent when confidence is close.
+  - Evaluate each argument on its evidence, not on which role it came from. All
+    three roles are equally able to be wrong. Do not systematically favour the
+    risk agent, the bull, or the bear — favour whichever reasoning the data
+    actually supports.
+  - Check for reasoning that the given data does not support. In particular: the
+    answer is a percentage, so `vault.navUsdc` is not evidence about the right
+    percentage. A small NAV is not an argument for more cash, and a large NAV is
+    not an argument for less. If an agent leans on NAV size, discount that part.
+  - Note when two agents agree only because they share a weak premise.
   - Explain in one or two sentences why your number differs from the raw mean,
     if it does.
 

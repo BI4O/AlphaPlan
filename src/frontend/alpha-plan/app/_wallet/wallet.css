@@ -1,0 +1,126 @@
+/**
+ * 申赎面板的补充样式。
+ *
+ * 为什么单独一个文件而不写进 `_console/console.css`：
+ * console.css 是 frontend-worker 的领地（那份文件里已经有 `.trade` 的基础样式）。
+ * 我只追加自己新增的三个类，放在 _wallet/ 下、由 globals.css 引入 ——
+ * 这样两边改不同的文件，不会互相覆盖。
+ *
+ * 只用 DESIGN.md 的 token（--paper/--linen/--ink/--ash/--rule/--indigo/--oat/
+ * --success/--warning/--error），不引入新色值。
+ */
+
+/* 余额 / 授权两行。用 dl 而不是表格：它是「标签 : 值」，不是数据网格 */
+.trade__kv {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: var(--hair);
+  border-radius: var(--radius);
+  background: var(--linen);
+  font-size: var(--fs-meta);
+}
+.trade__kv > div {
+  display: grid;
+  grid-template-columns: minmax(0, 7em) minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+}
+.trade__kv dt {
+  color: var(--ash);
+  white-space: nowrap;
+}
+.trade__kv dd {
+  margin: 0;
+  color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 「本次需要」那一行的三态：一笔 / 两笔 / 未知。
+   颜色只做辅助 —— 文字本身已经把话说完了（颜色单独承载信息等于对色盲用户隐藏它）。 */
+.trade__state {
+  color: var(--ink);
+}
+.trade__state[data-tone="ok"] {
+  color: var(--success);
+  font-weight: 600;
+}
+.trade__state[data-tone="warn"] {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* 解释「全部」为什么不是全部份额。这是一段必须被读到的说明，
+   所以给左侧竖线而不是灰色小字 —— 它讲的是钱。 */
+.trade__note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: var(--hair);
+  border-left: 2px solid var(--oat);
+  border-radius: var(--radius);
+  background: var(--paper);
+  font-size: var(--fs-meta);
+  line-height: 1.55;
+  color: var(--ink);
+}
+.trade__note code {
+  font-family: var(--mono);
+  font-size: 0.95em;
+  padding: 1px 4px;
+  border: var(--hair);
+  border-radius: 3px;
+  background: var(--linen);
+}
+
+/* 未连接时的「连接钱包 + 本地链提示」组合。
+   提示出现在按钮**下方**（不是弹窗里）：用户在点之前就要知道手机连不上。
+
+   注意这块在顶栏里，空间是按行给的 —— 用 absolute 下拉而不是把顶栏撑高，
+   否则 42px 的提示会把整个 topbar 推成两行，其他页面元素全往下掉。 */
+.wallet-connect-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.wallet-connect-wrap .local-notice {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 320px;
+  margin: 0;
+  box-shadow: 0 8px 24px -12px color-mix(in oklab, var(--ink) 30%, transparent);
+
+  /*
+    这里是浮层，不是页面里的提示条，所以不沿用 console.css 那份 flex 布局。
+
+    那份 `.local-notice` 是 display:flex + gap:8px，在窄浮层里会把每个
+    文本节点当成独立 flex 项 —— 实测「请用」「浏览器插件钱包」「。手机扫码…」
+    各占一行，整块高度 466px，还盖住半屏。
+
+    换成：图标用 float 让文字自然环绕（文本节点不受 grid/flex 分列规则约束，
+    只有 float 能正确处理「图标 + 不定长度的行内文字」）。
+    行内的 strong / code 保持 inline —— OD-LAYOUT-PRIMITIVES 里有
+    `:where(.od-field,…) > :where(*) { display: block }` 会命中它们。
+  */
+  display: block;
+  padding: 10px 12px;
+  border: var(--hair);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--linen);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--ink);
+}
+.wallet-connect-wrap .local-notice > svg {
+  float: left;
+  margin: 3px 8px 0 0;
+  color: var(--warning);
+}
+.wallet-connect-wrap .local-notice strong,
+.wallet-connect-wrap .local-notice code {
+  display: inline;
+}

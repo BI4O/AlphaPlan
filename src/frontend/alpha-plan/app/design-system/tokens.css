@@ -1,0 +1,134 @@
+/**
+ * Quaestor · 司库 —— 语义 token 层（浅色）。
+ *
+ * 唯一色值来源是 `design/DESIGN.md` 手写的 7 个角色。**不要**改用
+ * `design/system/tokens.*.json` 里的值：那是 antd 从一颗 seed 色推导出来的，
+ * 中性色与 DESIGN.md 有出入（正文 #383e53 vs ink-navy #1e253d、
+ * 描边 #d9d8d8 vs taupe-rule #dbd3cb），混用会让两种情况下的对比度都失准。
+ *
+ * 深色主题刻意不做：DESIGN.md 自己写了「暗色由同一颗种子推导，暗色下要重新校验
+ * 每一对前景／背景对比度后再使用」，那是另一轮工作（design/system/variables.dark.css）。
+ *
+ * 纸面实测对比度（WCAG 2.1，sRGB）：ink 14.26 · indigo 7.17 · error 6.71 ·
+ * success 6.52 · warning 5.75 · ash 5.24 · oat 2.83（只做装饰，不承载文字）。
+ */
+
+:root {
+  /* 声明浅色：不加这一行，dark 模式的表单控件会自己变黑 */
+  color-scheme: light;
+
+  --qs-paper: #faf8f3; /* 页面底色 */
+  --qs-linen: #f2ece5; /* 卡片 / 面板 / 侧栏 */
+  --qs-ink-navy: #1e253d; /* 正文、标题、金额 */
+  --qs-ash: #6b6674; /* 次级文字（正文不要调灰） */
+  --qs-taupe-rule: #dbd3cb; /* 1px 分隔线与描边 */
+  --qs-quiet-indigo: #42508c; /* 主操作、焦点环、图表主线 */
+  --qs-oat: #a7917e; /* 只做装饰层；其上压 ink 为 5.04:1 */
+
+  /* 交互态取自同一套主色梯（design/system/variables.css 的 primary-palette 5/7） */
+  --qs-indigo-hover: #606d99;
+  --qs-indigo-active: #2b3466;
+
+  /* 状态色：DESIGN.md 未定义，取自 brand seed。纸面对比度见文件头 */
+  --qs-success: #40614d;
+  --qs-warning: #7f5b30;
+  --qs-error: #86463a;
+
+  /* 版面节奏：8px 基线 / 4px 微步进 / 24·32·48·64 区块节奏 */
+  --qs-tap-target: 44px;
+  --qs-row-height: 40px;
+  --qs-toolbar-height: 36px;
+  --qs-nav-height: 64px;
+  --qs-text-measure: 70ch;
+}
+
+/*
+ * @theme inline：把语义变量接进 Tailwind 命名空间，产出 bg-paper / text-ink /
+ * border-rule / font-display / text-body 这类工具类，且引用的是上面的 var()，
+ * 而不是在编译期被拍平成字面量。
+ */
+@theme inline {
+  --color-paper: var(--qs-paper);
+  --color-linen: var(--qs-linen);
+  --color-ink: var(--qs-ink-navy);
+  --color-ash: var(--qs-ash);
+  --color-rule: var(--qs-taupe-rule);
+  --color-indigo: var(--qs-quiet-indigo);
+  --color-oat: var(--qs-oat);
+  --color-indigo-hover: var(--qs-indigo-hover);
+  --color-indigo-active: var(--qs-indigo-active);
+  --color-success: var(--qs-success);
+  --color-warning: var(--qs-warning);
+  --color-error: var(--qs-error);
+
+  /* 字体：拉丁走自托管 woff2，中文回落到系统字体（DESIGN.md 规定 PingFang SC / Noto Sans SC） */
+  --font-sans:
+    var(--font-inter), system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  --font-display:
+    var(--font-newsreader), "Iowan Old Style", Georgia, "Songti SC", "Times New Roman",
+    serif;
+  --font-mono:
+    var(--font-plex-mono), ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* 字阶：标题 44/36/30/24/20，正文 16/1.6，元信息 14 */
+  --text-display: 44px;
+  --text-display--line-height: 1.2222;
+  --text-display--letter-spacing: -0.01em;
+  --text-h2: 36px;
+  --text-h2--line-height: 1.2222;
+  --text-h2--letter-spacing: -0.01em;
+  --text-h3: 30px;
+  --text-h3--line-height: 1.2222;
+  --text-h3--letter-spacing: -0.01em;
+  --text-h4: 24px;
+  --text-h4--line-height: 1.2222;
+  --text-h4--letter-spacing: -0.01em;
+  --text-h5: 20px;
+  --text-h5--line-height: 1.2222;
+  --text-h5--letter-spacing: -0.01em;
+  --text-body: 16px;
+  --text-body--line-height: 1.6;
+  --text-meta: 14px;
+  --text-meta--line-height: 1.5;
+
+  /* 圆角：8px 是控件与卡片的唯一圆角，只有浮层用 10px */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  /* 动效：150–260ms，进 ease-out、出 ease-in-out */
+  --ease-enter: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-exit: cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+
+@layer base {
+  body {
+    background-color: var(--qs-paper);
+    color: var(--qs-ink-navy);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+  }
+
+  /* 焦点环固定 2px indigo、外偏 2px，键盘与鼠标一致（DESIGN.md：移除焦点环等同移除可用性） */
+  :focus-visible {
+    outline: 2px solid var(--qs-quiet-indigo);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--qs-quiet-indigo);
+    color: var(--qs-paper);
+  }
+
+  /* 金额、代码、时间戳一律等宽 + tabular-nums，数字列右对齐 */
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}

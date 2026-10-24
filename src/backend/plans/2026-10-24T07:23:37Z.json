@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:23:37Z",
+  "asOf": 1792826617,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 4788.53,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 3800,
+      "confidence": 0.62,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, an ~8-point divergence that signals strong ETH-specific momentum and relative strength, and the vault currently sits at 0 bps WETH, leaving all of that upside unharvested. BTC weakness is a real systemic caveat, so I favor a solid but not maximal overweight rather than pressing the 60% cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.65,
+      "reason": "BTC is down 2.82% while ETH is up 5.26%, a sharp divergence that suggests ETH's rally lacks broad market support, so the defensive target remains 0 bps WETH."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.78,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, a sharp cross-market divergence with elevated 24h volatility that raises drawdown and liquidity risk; with the vault already at 0 WETH, there is no reason to add exposure into that disagreement."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 1855,
+    "confidence": 0.5,
+    "rationale": "I discount the risk agent's unsupported volatility claim and treat the two 0-bps recommendations as one bearish divergence view, not two independent votes. The bull's relative-strength case is about as well supported as the bear's caution, so I set a modest overweight rather than following the raw confidence-weighted mean."
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:15:52Z",
+  "asOf": 1792826152,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 11020,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 2200,
+      "confidence": 0.55,
+      "reason": "ETH is up 5.26% over 24h while BTC is down 2.82%, an ~8pt relative-strength divergence that argues for rotating the vault's 0% WETH allocation into ETH exposure. But BTC weakness warns of broader risk-off, so I'd build only a partial ~22% position rather than approaching the 60% cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.62,
+      "reason": "ETH's +5.26% pop to $3,696 contrasts with BTC's -2.82% move to $80,788, signaling a narrow and potentially fragile risk rally; with NAV at $11,020 and WETH already at 0 bps, staying in cash avoids chasing an extended move."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.82,
+      "reason": "ETH's 24h +5.26% move alongside BTC's -2.82% signals elevated volatility and cross-asset divergence, so adding WETH exposure is not warranted; with vault NAV of only $11,020 and current WETH allocation at 0 bps, preserving cash maximizes redemption liquidity."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 0,
+    "confidence": 0.82,
+    "rationale": "The raw mean is about 733 bps, but I set 0 because risk at 0.82 confidence and bear at 0.62 both emphasize elevated volatility, the small $11k NAV, and existing 0 WETH exposure; the bull’s ETH/BTC divergence signal is a short-term argument that does not outweigh liquidity preservation."
+  }
+}

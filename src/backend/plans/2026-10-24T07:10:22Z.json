@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:10:22Z",
+  "asOf": 1792825822,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 3500,
+      "confidence": 0.65,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, showing clear relative strength, and the vault currently holds 0 bps WETH, leaving room to add exposure toward a moderate 3500 bps target."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 1500,
+      "confidence": 0.55,
+      "reason": "ETH's +5.26% 24h jump to $3696 looks stretched while BTC is down -2.82% to $80788, a divergence that signals fragile risk appetite and poor entry timing for adding exposure; with only $20 NAV, round-trip costs also argue for staying light. I'd keep WETH well below half-weight rather than chase the spike."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.75,
+      "reason": "Vault NAV is only $20 with 0 bps WETH; ETH is up 5.26% over 24h while BTC is down 2.82%, signaling elevated volatility and cross-asset divergence. Keeping the allocation at 0 bps preserves cash and redemption liquidity."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 0,
+    "confidence": 0.7,
+    "rationale": "Given the tiny $20 NAV and the ETH/BTC divergence, the risk agent's call to stay at 0 bps is better supported than the bull's 35% target; this is a deliberate break toward risk rather than the 1590 bps weighted mean."
+  }
+}

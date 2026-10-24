@@ -154,10 +154,35 @@ liquidity 不变、买卖两个方向都能成交。更高没验过，不要临�
 | 持着 WETH 时 `redeem(20,000,000)` | revert `InsufficientLiquidity(19,980,933, 14,000,000, 5,980,933)` |
 | 先 `onReport(target=0)` 清仓，再全额赎回 | 成功，现金 == NAV，不需要再卖币 |
 
-> 池子有 0.3% 手续费，所以"持着 WETH 赎回 100%"必然差一点点钱 —— 这是真实成本，不是 bug。
-> 要演示「全额 cash out」，顺序是**先让计划清仓、再赎回**，而不是直接点赎回全部。
-> 清仓时 `MAX_SWAP_BPS` 会截断单次调仓，脚本会把截断后剩下的 dust（< 1 USDC）一并卖掉，
-> 否则那点 dust 又会让全额赎回差几个最小单位。
+#### ⚠️ 持着 WETH 时无法一次性赎回 100%（结构性，不是 bug）
+
+差额**恰好等于池子的 swap 手续费（0.3%）**。原因：
+
+- `NAV` 按 **Chainlink oracle 价**计算（PRD §2：「NAV 绝不由 CRE 报告」）；
+- 但清算必须走 **Uniswap 池子**，付 0.3% 手续费。
+
+这两个数字天生差一个费率。实测（锁定环境）：
+
+```
+NAV（oracle 计）          19,980,933
+全部卖光后实际能拿到       19,964,056
+缺口                        16,877   = wethValue × 0.282%
+```
+
+**两个方向都堵死，所以改代码救不回来**：
+- 把折价从准入判定里拿掉 → swap 自己会因 `minOut` 差 0.3% 而 revert；
+- 用池子实际价算 NAV → NAV 会被系统性低估，对留下的持有人不公。
+
+**正确做法**：
+- 要演示「全额 cash out」，**先让计划清仓（target=0）**，让现金 == NAV，再全额赎回；
+- 或者分两次赎回（第一次点 max 取走现金覆盖的部分，剩下的等清仓后再取）。
+
+清仓时 `MAX_SWAP_BPS` 会截断单次调仓，脚本会把截断后剩下的 dust（< 1 USDC）一并卖掉，
+否则那点 dust 又会让全额赎回差几个最小单位。
+
+这条约束被 `test_Fork_09b_FullRedeemWithWethHeldFailsByPoolFee` 钉住：
+它断言「部分赎回成功 + 全额赎回按手续费量级差钱」。将来如果有人"修"这个行为，
+测试会直接告诉他为什么不能修。
 
 自动卖币的规则、`LiquiditySold` 语义、`maxWithdraw/maxRedeem` 的回退，见下面
 「赎回：现金不足时自动卖 WETH」一节。
@@ -173,6 +198,37 @@ bash script/demo-snapshot.sh --after    # 抬价后：打印当前值 + 与基�
 `--after` 会直接打出 `totalAssets / sharePrice / oracle / 池价 / wethBps` 的前后差
 和 NAV 涨幅，不用手抄数字。快照还包含最近一次 `PlanExecuted` 的 tx/块号和 24h 行情，
 并检查池价与 oracle 的偏离（>50bps 时卖方向会 revert）。
+
+## Fork 测试的限制
+
+`ForkDemoTest` 的 11 个用例运行在 `--fork-url` 的**当前区块附近**，不是全时段。
+
+```bash
+cd src/contract
+forge test --match-contract ForkDemoTest --fork-url https://sepolia.base.org -vv
+```
+
+如果换 `--fork-block-number`，部分用例会失败，因为：
+
+- `BUMP_TICK` / `BUMP_SQRT_PRICE_X96` 是能过的那一档**硬编码**值
+  （`tick=193380`、`sqrtPriceX96=1252745881365729737177065691545600`）；
+- 池子流动性在不同区块深度不同，tick 区间覆盖范围也不同；
+- 滑点会因区块不同而变化，`currentWethBps ≈ 3000 ± 30` 这类断言会松动。
+
+**这些测试证明的是「在当前链状态下，合约行为正确」，不是「在任何区块都正确」。**
+要跑全时段回归，需要把 `BUMP_TICK` 改成从 `slot0` 动态推算（TODO，未做）。
+
+### 两套测试的关系
+
+| 命令 | 区间 | 数量 |
+|---|---|---|
+| `forge test` | 纯离线、无网络 | **74 个**，全绿，秒级 |
+| `forge test --match-contract ForkDemoTest --fork-url …` | 真链 fork | **11 个** |
+
+`ForkDemoTest` 在没接 `--fork-url` 时走 `vm.skip(true)`，所以普通 `forge test` 不会失败。
+**但这意味着它的绿是"没跑"而不是"跑过"** —— `forge test` 的退出码仍是 0。
+CI 或验收要用 fork 那 11 个时，**必须显式带 `--fork-url` 并检查输出里有 `11 passed`**，
+不能只看 `forge test` 是否 exit 0。
 
 ### 24h 历史（backend 算涨跌幅的前提）
 

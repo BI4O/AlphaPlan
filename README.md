@@ -244,6 +244,107 @@ ETH 涨 8.2% 只能带动 NAV 涨 2.46%。这是杠杆传导的算术，不是�
 8. **demo 里的第一笔存款来自开发者本人。** 这不是用户验证，是机制验证。
    「谁会存钱进来」在本阶段不是本项目要解决的问题 —— 我们不编市场故事。
 
+
+### MetaMask 导入与配置（一条一条照做）
+
+> ⚠️ **先启动环境再导入。** 导入时 MetaMask 会去连 RPC，链没起就会失败。
+> 启动：`bash src/contract/script/demo-up.sh`
+
+#### 1. 添加网络
+
+MetaMask → 网络下拉 → **Add a custom network**：
+
+| 字段 | 填什么 |
+|---|---|
+| Network name | `Local Anvil (AlphaPlan)` |
+| RPC URL | `http://127.0.0.1:8545` |
+| Chain ID | `31337` |
+| Currency symbol | `ETH` |
+| Block explorer | 留空 |
+
+> **Chain ID 必须填 31337。** 我们的链是 `anvil --fork-url <Base Sepolia> --chain-id 31337` ——
+> fork 拿到真 USDC/WETH/Uniswap 状态，`--chain-id` 覆盖成 anvil 默认的 31337。
+
+**如果删不掉旧网络**（MetaMask 的已知限制）：
+
+1. 先把当前网络**切到别的**（如 Ethereum Mainnet）—— 不能删除正在使用的网络
+2. 再打开下拉 → 找到旧网络 → 三个点 → Delete
+3. 还不行就加个 `chainId 31338` 的假网络占位，旧的就能删了
+
+#### 2. 导入测试账户
+
+MetaMask → 账户头像 → **Import account** → 粘贴私钥：
+
+```
+0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+地址会是 `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`。
+
+> **这是 anvil 的公开测试私钥**，写在 Hardhat/Foundry 官方文档里，
+> 只在这条本地链上有意义。**永远不要用在任何真实网络上。**
+
+#### 3. 导入代币（否则只看到 ETH）
+
+MetaMask → **Import tokens** → **Custom token**，加两个：
+
+| 代币 | 合约地址 | 符号 | Decimals |
+|---|---|---|---|
+| 测试 USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | `USDC` | **6** |
+| 基金份额 | `0x8f7a1DEFa8B06a8d66ea14a71A2eF2CE4bA1295b` | `apUSDC` | **6** |
+
+> **基金份额代币的地址就是金库合约本身** —— ERC-4626 金库本身就是 ERC-20，
+> 你的份额就是它的代币。不是笔误。
+
+导入后应该看到：
+
+```
+ETH      10,000
+USDC     24.354929
+apUSDC   20.000000
+```
+
+#### 4. 验证连对了链
+
+连上钱包后，页面右上角应该显示：
+
+```
+0xf39F…2266 · 10,000.0000 ETH · Local Anvil (AlphaPlan)
+```
+
+如果显示**「网络不匹配」**，说明 MetaMask 连的不是 `31337 + 127.0.0.1:8545`。
+点页面上的「切换」按钮，或手动在 MetaMask 里切到 `Local Anvil (AlphaPlan)`。
+
+#### 5. 常见问题
+
+**Q: 页面显示「读取失败」但 MetaMask 显示已连接**
+A: 大概率连错 RPC。**Chain ID 相同的网络可以有不同 RPC** ——
+如果你之前加过别的 31337 网络（裸 anvil、Hardhat），MetaMask 可能连的是那个。
+那上面没有本项目的合约。删掉重新加，RPC 必须精确为 `http://127.0.0.1:8545`。
+
+**Q: 导入 USDC 时提示「代币已存在」**
+A: 说明之前加过。地址相同就可以直接用。
+
+**Q: 余额是 0**
+A: 先确认网络是 `Local Anvil (AlphaPlan)`，再确认账户是 `0xf39F…2266`。
+环境重启后余额会回到初始值（`demo-up.sh` 每次都重新入金 20 USDC）。
+
+**Q: 手机钱包扫码连不上**
+A: 正常。Reown 走 WalletConnect 云端中继，手机访问不到你电脑的 `127.0.0.1`。
+**只用浏览器插件钱包（MetaMask）。**
+
+#### 6. 环境重启后要做什么
+
+`anvil` 进程一停，部署、mock feed、入金全部消失。重跑：
+
+```bash
+bash src/contract/script/demo-up.sh          # 重建（地址不变，DEPLOY_BLOCK 会变）
+```
+
+重启后 MetaMask 里**不用重新导入** —— 网络和代币配置都还在。
+但余额会回到初始值，页面上的 `DEPLOY_BLOCK` 可能需要在 `.env.local` 里更新
+（`demo-up.sh` 会把新值写在输出里）。
+
 ### ⚠️ 关于本地链（必须知道）
 
 **本项目的链是本地 anvil fork，只在开发者机器上运行。**

@@ -79,52 +79,60 @@
 
 ---
 
-## 0. **当前环境（8545 + chainId 31337，2026-10-24 14:50 采集）**
+## 0. **当前环境（2026-10-24 15:38 采集，lastNonce=3）**
 
 ```
-VAULT_ADDRESS = 0x8f7a1defa8b06a8d66ea14a71a2ef2ce4ba1295b   （地址未变）
-DEPLOY_BLOCK  = 49513273                                       （已变，第三次换环境）
+VAULT_ADDRESS = 0x8f7a1defa8b06a8d66ea14a71a2ef2ce4ba1295b
+DEPLOY_BLOCK  = 49522615      ← 二分法实测确认
 RPC_URL       = http://127.0.0.1:8545
 CHAIN_ID      = 31337
-                 ↑ fork 源自 Base Sepolia（84532），但 anvil 用 --chain-id 覆盖成 31337
-                 这是 PM 的决定：fork 拿到真合约依赖，chainId 用 anvil 默认值
 ```
 
-**独立复核（14:50:41）—— 与 PM 数据一致，且额外确认了 fork 依赖都有代码：**
+**`DEPLOY_BLOCK` 用二分法独立验证**（不是抄 PM 的）：
 
-| 项 | 实测 | |
-|---|---|---|
-| `chainId` | 31337 | ✅ |
-| 块高 | 49,513,277 | — |
-| 金库字节码 | 39,981 B | ✅ |
-| `totalAssets` | 20 000 000 | ✅ |
-| `lastNonce` | 0 | ✅ |
-| USDC / WETH / Router / Feed 代码 | 3599 / 4085 / 48997 / 2655 B | ✅ **fork 依赖完整** |
+```
+先确认 49519398（PM 说错的）→ cast code = 3 B（无代码）
+二分找「最小有代码的块」→ 49522615
+```
 
-> 这条额外确认很重要：PM 单独在 8555 验证过「裸 anvil 31337 上这些地址全是 `0x`」。
-> 现在它们都有代码 → 说明这确实是 **fork + chain-id 覆盖**，不是裸链。
+**为什么 49519398 是错的**：anvil 每次重启都从上游重新 fork，**块高整体平移** ——
+同一个合约在不同 anvil 实例上的块号完全不同。49519398 是**旧实例**上的首块。
 
-### ⚠️ chainId 改 31337 削弱了 E7b 的一个价值，必须记下
+**链上实况（15:38:27）**：`chainId 31337` / latest 49,522,635 / code 39,981 B /
+`totalAssets` 10,441,829 / `totalSupply` 10,000,000 / `lastNonce` 3 /
+`currentWethBps` 3719 / `lastPlanHash 0x4da387ae…dea367`
 
-原来 chainId 是 **84532**，与真 Base Sepolia **相同** —— 这正是 E7b-2 存在的理由：
-用户钱包可能连着真 Base Sepolia（chainId 相同、RPC 不同、合约为空）。
+**8788 已修（503 → 200）**：
+`x-plan-file: 2026-10-24T07:34:51Z.json`、`latestReason: "onchain"`、`onchain: nonce=3 target=4000 execs=3`
 
-现在改成 **31337**（anvil 默认），这个"同 chainId 不同 RPC"的陷阱**消失了**，
-E7b-1（chainId 不等就警告）反而变得容易触发、E7b-2 变成较少见的场景。
+> **503 的真实根因**（PM 查明）：`serve-plans.ts` 启动时必须有 `VAULT_ADDRESS`，
+> 否则拒绝启动（设计如此，不允许静默退化成"取最新文件"）；
+> 而 `bun src/serve-plans.ts` **不会自动加载 `.env`** —— 进程起来了、env 是空的 → 每请求 503。
+> 修法：显式传 env 启动。
 
-**但 E7b-2 不能删**：用户仍可能连着别的 31337 网络（裸 anvil、Hardhat），
-那上面 USDC/WETH/Router 全无代码。探测法（`eth_getCode(VAULT)`）依然能抓住。
+#### 链上三条执行记录 —— **只有 nonce=1 是真 swap**
 
-**这不是缺陷，是权衡**：PM 换了 chainId 换取「fork 依赖 + anvil 默认值」的简化。
-记录在此，避免以后有人以为 E7b-2 是多余的。
+```
+nonce=1  PlanExecuted  target=15.00% actual=14.96%  usdcIn=3.0000
+nonce=2  PlanRecorded  target=35.00% actual=37.13%  （容差内未调仓）
+nonce=3  PlanRecorded  target=40.00% actual=37.19%  （容差内未调仓）
+```
 
-### 空环境 = 事务类判据 SKIP
+**这条必须说清楚**：`PlanRecorded` 是「通过门禁但容差内不调仓」，**不是执行了交易**。
+如果把它当成"执行了"，就等于宣称了一个没发生过的动作。
 
-`PlanExecuted` / `PlanRecorded` / `LiquiditySold` 均 **0 条**，`lastNonce = 0`。
-E3、E4、E6b、E6c-1、D3、D7 需要至少一次执行才有内容 → 判 **SKIP**。
-A11b–A11g（赎回自动卖 WETH）需要主动写链 → 必须 PM 协调。
+#### `currentWethBps` 从 14.96% 涨到 37.19% 的原因：**不是 swap，是现金变少**
 
-**PM 已说明将执行一次 onReport，届时我重采快照。**
+```
+当前 WETH = 809,095,192,231,808 wei（只在块 49522620 买入过一次，此后未变）
+当前 cash = 6,558,173（6.5582 USDC）
+WETH 估值 = 3,883,656（feed $4,800）
+两者和   = 10,441,829 == 链上 totalAssets ✅
+重算 bps = 3719 == 链上 currentWethBps ✅
+```
+
+仓位占比上升是因为 **cash 被赎回/费用吃掉、NAV 变小**，WETH 价值不变而分母变小。
+**这正是 PRD「40% 现金不是不变量」的实证** —— 不变量在调仓那一刻成立，之后会被价格和赎回改变。
 
 ---
 

@@ -76,6 +76,14 @@ contract ForkDemoTest is Test {
     uint256 planSeq;
 
     bool forkReady;
+    /// @dev `vm.getRecordedLogs()` 会**清空**缓冲区，两个 helper 连用第二个会拿到空。
+    ///      所以每次 recordLogs 之后先 _capture() 一次，helper 只读这个副本。
+    ///      用 storage array 会触发 "Copying struct[] to storage" 错误（legacy pipeline），
+    ///      所以按字节把 topics 和 data 存下来。
+    bytes32[] internal capTopics0;
+    bytes32[] internal capTopics1;
+    bytes32[] internal capTopics2;
+    bytes[] internal capData;
 
     function setUp() public {
         // 没在 fork 上跑（普通 `forge test`）→ 跳过整套，不判失败。
@@ -134,6 +142,7 @@ contract ForkDemoTest is Test {
 
         vm.recordLogs();
         _onReport(3000);
+        _capture();
 
         assertEq(vault.lastNonce(), 1);
         assertGt(IERC20(WETH).balanceOf(address(vault)), 0, "real pool gave WETH");
@@ -202,10 +211,13 @@ contract ForkDemoTest is Test {
         _onReport(3000);
 
         _bumpPrice(false); // 只改 oracle
+        // 之前漏了这一步，导致 revert 来自 TooSoon 而不是 swap —— 用例名不副实。
+        _waitMinInterval();
 
         bytes memory report = _report(uint64(block.timestamp), 0, _nextNonce(), keccak256("oracle-only"));
         vm.prank(MOCK_FORWARDER);
-        vm.expectRevert();
+        // 失败点必须是 SwapRouter02 的滑点检查（字符串），不是金库自己的检查。
+        vm.expectRevert(bytes("Too little received"));
         vault.onReport("", report);
 
         assertGt(IERC20(WETH).balanceOf(address(vault)), 0, "position untouched");
@@ -224,11 +236,16 @@ contract ForkDemoTest is Test {
         uint160 sqrtBefore = _slot0Sqrt();
 
         vm.recordLogs();
-        _onReport(2800); // drift 193bps <= 300
+        bytes32 planHash = keccak256(abi.encode("fork-plan", uint16(2800), planSeq));
+        _onReportHashed(2800, planHash); // drift 193bps <= 300
+        _capture();
 
         assertEq(IERC20(WETH).balanceOf(address(vault)), wethBefore, "position untouched");
         assertEq(_slot0Sqrt(), sqrtBefore, "pool untouched");
+        assertEq(_countSwaps(), 0, "router never called (A5b)");
         assertEq(vault.lastNonce(), 2, "nonce still consumed");
+        assertTrue(vault.planUsed(planHash), "planUsed set even without trading (A5b)");
+        assertEq(vault.lastExecutedAt(), block.timestamp, "lastExecutedAt advanced");
 
         (bytes32 topic0,,,) = _lastPlanEvent();
         assertEq(topic0, AlphaPlanVault.PlanRecorded.selector, "recorded, not executed");
@@ -266,14 +283,39 @@ contract ForkDemoTest is Test {
         uint256 cash = IERC20(USDC).balanceOf(address(vault));
         assertGt(expected, cash, "premise: cash insufficient");
 
+        uint256 traderBefore = IERC20(USDC).balanceOf(trader);
+        uint256 wethBefore = IERC20(WETH).balanceOf(address(vault));
+
         vm.recordLogs();
         vm.prank(trader);
-        uint256 got = vault.redeem(shares, trader, trader);
+        vault.redeem(shares, trader, trader);
+        _capture();
 
-        assertEq(got, expected, "paid == previewRedeem at call time");
-        assertTrue(_sawLiquiditySold(), "LiquiditySold emitted");
-        // 池子 0.3% 手续费：实际到账只允许差手续费级别
-        assertGe(got * BPS, expected * (BPS - FEE_TOLERANCE_BPS), "only fee-level loss");
+        // ① 用户真的收到了钱（不是"函数返回了自己算的数"这种恒真断言）
+        uint256 received = IERC20(USDC).balanceOf(trader) - traderBefore;
+        assertEq(received, expected, "user balance grew by exactly previewRedeem");
+        assertEq(vault.balanceOf(trader), 20e6 - shares, "shares burned");
+
+        // ② 先数 swap（cap 数组在 helper 之间共享，必须先取）
+        uint256 swaps = _countSwaps();
+        emit log_named_uint("swaps", swaps);
+        emit log_named_uint("capLen", capTopics0.length);
+
+        // ③ LiquiditySold 的数值必须与链上实际 WETH 减少量一致
+        (uint256 wethIn, uint256 usdcOut,,) = _liquiditySold();
+        uint256 wethSold = wethBefore - IERC20(WETH).balanceOf(address(vault));
+        assertEq(wethIn, wethSold, "event wethIn == actual WETH decrease");
+        // usdcOut 是「为补现金缺口卖出的 WETH 换回的 USDC」，必然 <= 实收
+        assertGt(usdcOut, 0, "sold something for cash");
+        assertLe(usdcOut, received, "proceeds cannot exceed payout");
+
+        // ③ 真正要钉的：卖出侧成交价不得差于 oracle 的 SLIPPAGE_BPS
+        uint256 oracleValue = wethSold * vault.ethPrice() / 1e20;
+        assertGe(usdcOut * BPS, oracleValue * (BPS - 50), "sell within SLIPPAGE_BPS");
+
+        // ④ A11b：实际交易笔数（第 1 笔必差手续费，所以至少 2 笔）
+        assertLe(swaps, 4, "at most 4 swaps");
+        assertGe(swaps, 2, "first leg always short by pool fee");
     }
 
     // ==================================================================
@@ -297,6 +339,46 @@ contract ForkDemoTest is Test {
         assertEq(got, promised, "full redeem needs no extra sell");
         assertLe(IERC20(USDC).balanceOf(address(vault)), 2, "only rounding dust");
         assertEq(IERC20(WETH).balanceOf(address(vault)), 0);
+    }
+
+    // ==================================================================
+    // 09b 最后一个持有人直接全额赎回（reviewer 挖出的 P0，真链复验）
+    // ==================================================================
+
+    /// @dev **结构性约束，不是 bug**：NAV 按 oracle 价计，清算却要走池子付 0.3%。
+    ///      所以「持着 WETH 时 100% 赎回」永远差 `wethValue × 0.3%` 那一点，
+    ///      改准入判定救不回来（把折价拿掉，swap 自己会因 minOut 差 0.3% 而 revert）。
+    ///
+    ///      PRD §3.5 的承诺因此要读准：赎回**可用**（可以部分赎回、可以点 max），
+    ///      但"一次性赎回 100%"需要先清仓（target=0）让现金 == NAV。
+    ///      这条用例把这个限制钉成可执行的事实，而不是让它在 demo 现场被人点出来。
+    function test_Fork_09b_FullRedeemWithWethHeldFailsByPoolFee() public {
+        _requireFork();
+        _onReport(3000); // 持着 WETH，基金经理**没有**清仓
+
+        uint256 supply = vault.totalSupply();
+        uint256 nav = vault.previewRedeem(supply);
+        uint256 cash = IERC20(USDC).balanceOf(address(vault));
+        uint256 wethValue = IERC20(WETH).balanceOf(address(vault)) * vault.ethPrice() / 1e20;
+        assertGt(wethValue, 0, "premise: still holds WETH");
+
+        // 损失恰好是池子手续费量级（0.3%），不是"钱凭空消失"。
+        // 不预言确切到 wei 的现金余额（涉及两笔 swap 的取整），只钉量级。
+        uint256 irrecoverable = wethValue * POOL_FEE / 1_000_000;
+        assertLt(cash + wethValue - irrecoverable, nav, "clearing fee makes 100% redeem short");
+
+        // 失败点是「循环卖完之后现金仍然不够」的那个兜底 —— 此时 WETH 已清零，
+        // 所以 error 的第三个参数是 0（这就是"钱被手续费吃掉、不是凭空消失"的证据）
+        vm.prank(trader);
+        vm.expectPartialRevert(AlphaPlanVault.InsufficientLiquidity.selector);
+        vault.redeem(supply, trader, trader);
+
+        // 但「部分赎回」可用，而且能一直取到现金见底 —— 用户的钱不会被锁死
+        uint256 maxShares = vault.maxRedeem(trader);
+        vm.prank(trader);
+        uint256 got = vault.redeem(maxShares, trader, trader);
+        assertGt(got, 0, "partial redeem works");
+        assertEq(vault.balanceOf(trader), supply - maxShares);
     }
 
     // ==================================================================
@@ -405,27 +487,61 @@ contract ForkDemoTest is Test {
     }
 
     /// @dev 取最后一条 PlanExecuted / PlanRecorded 的 (topic0, asOf, validUntil, target)
-    function _lastPlanEvent() internal returns (bytes32 topic0, uint64 asOf, uint64 validUntil, uint16 target) {
+    function _capture() internal {
         Vm.Log[] memory logs = vm.getRecordedLogs();
-        bool found;
+        delete capTopics0;
+        delete capTopics1;
+        delete capTopics2;
+        delete capData;
         for (uint256 i; i < logs.length; i++) {
-            bytes32 t = logs[i].topics[0];
+            capTopics0.push(logs[i].topics.length > 0 ? logs[i].topics[0] : bytes32(0));
+            capTopics1.push(logs[i].topics.length > 1 ? logs[i].topics[1] : bytes32(0));
+            capTopics2.push(logs[i].topics.length > 2 ? logs[i].topics[2] : bytes32(0));
+            capData.push(logs[i].data);
+        }
+    }
+
+    function _lastPlanEvent() internal returns (bytes32 topic0, uint64 asOf, uint64 validUntil, uint16 target) {
+        bool found;
+        for (uint256 i; i < capTopics0.length; i++) {
+            bytes32 t = capTopics0[i];
             if (t != AlphaPlanVault.PlanExecuted.selector && t != AlphaPlanVault.PlanRecorded.selector) continue;
             topic0 = t;
             if (t == AlphaPlanVault.PlanExecuted.selector) {
-                (asOf, validUntil, target,,,) = abi.decode(logs[i].data, (uint64, uint64, uint16, uint16, uint256, uint256));
+                (asOf, validUntil, target,,,) =
+                    abi.decode(capData[i], (uint64, uint64, uint16, uint16, uint256, uint256));
             } else {
-                (asOf, validUntil, target,,) = abi.decode(logs[i].data, (uint64, uint64, uint16, uint16, uint64));
+                (asOf, validUntil, target,,) = abi.decode(capData[i], (uint64, uint64, uint16, uint16, uint64));
             }
             found = true;
         }
         assertTrue(found, "no PlanExecuted/PlanRecorded emitted");
     }
 
+    /// @dev 取 LiquiditySold 的 (wethIn, usdcOut, shares, timestamp)
+    function _liquiditySold() internal returns (uint256 wethIn, uint256 usdcOut, uint256 shares, uint64 ts) {
+        bool found;
+        for (uint256 i; i < capTopics0.length; i++) {
+            if (capTopics0[i] != AlphaPlanVault.LiquiditySold.selector) continue;
+            (wethIn, usdcOut, shares, ts) = abi.decode(capData[i], (uint256, uint256, uint256, uint64));
+            found = true;
+        }
+        assertTrue(found, "LiquiditySold not emitted");
+    }
+
+    /// @dev 数 Uniswap 池子的 Swap 事件 —— 这才是"router 被调用了几次"的硬证据。
+    ///      必须读 cap（快照），**不能**再调 getRecordedLogs()：那个调用会清空缓冲区，
+    ///      同一用例里连用两个 helper 时第二个会拿到空数组（实测踩过）。
+    function _countSwaps() internal view returns (uint256 n) {
+        bytes32 swapTopic = 0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67;
+        for (uint256 i; i < capTopics0.length; i++) {
+            if (capTopics0[i] == swapTopic) n++;
+        }
+    }
+
     function _sawLiquiditySold() internal returns (bool) {
-        Vm.Log[] memory logs = vm.getRecordedLogs();
-        for (uint256 i; i < logs.length; i++) {
-            if (logs[i].topics[0] == AlphaPlanVault.LiquiditySold.selector) return true;
+        for (uint256 i; i < capTopics0.length; i++) {
+            if (capTopics0[i] == AlphaPlanVault.LiquiditySold.selector) return true;
         }
         return false;
     }

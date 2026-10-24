@@ -24,6 +24,9 @@ set -euo pipefail
 
 PORT="${PORT:-8545}"
 RPC_URL="http://127.0.0.1:${PORT}"
+# 演示统一用 31337（anvil 默认）。裸 anvil 31337 上没有 USDC/WETH/Router/Feed，
+# 所以必须 fork 真链拿状态，再用 --chain-id 覆盖身份标识。两者兼得。
+CHAIN_ID_OVERRIDE="${CHAIN_ID_OVERRIDE:-31337}"
 FORK_URL="${FORK_URL:-https://sepolia.base.org}"
 DEPOSIT_USDC="${DEPOSIT_USDC:-20000000}" # 20 USDC（6 位小数）
 ENV_FILE="/tmp/alphaplan-demo-env"
@@ -71,7 +74,7 @@ else
   # --timestamp 把 genesis 时间对齐到墙钟。不加的话 anvil 会沿用 fork 的状态时间，
   # 一旦有人跑过 evm_increaseTime，偏移就永久留在链上 —— 而后端用 Date.now()
   # 生成计划的 asOf，两边时钟错位会让计划一生成就过期（实测差 1401s）。
-  nohup anvil --fork-url "${FORK_URL}" --port "${PORT}" --timestamp "$(date +%s)" >/tmp/anvil-fork.log 2>&1 &
+  nohup anvil --fork-url "${FORK_URL}" --port "${PORT}" --chain-id "${CHAIN_ID_OVERRIDE}" --timestamp "$(date +%s)" >/tmp/anvil-fork.log 2>&1 &
   echo "已启动 anvil，日志 /tmp/anvil-fork.log"
   wait_rpc
 fi
@@ -97,6 +100,21 @@ if [[ "${RESET:-0}" != "1" && -f "${ENV_FILE}" ]]; then
 fi
 
 if [[ -z "${VAULT}" ]]; then
+  # RESET=1 且链上已有旧金库时，新部署**不会**替换掉旧的 —— 旧合约仍然在链上，
+  # 仍然有代码、仍然能读。于是同时存在两个金库，下游谁指错了都看不出来
+  # （实测踩过：0x8f7a… 有 10 份额和一轮执行记录，0x6ee3… 全新 20 份额，
+  #   两个都是"有代码的合法金库"）。
+  # 所以这里必须把旧地址打印出来，让人知道它还在、以及它现在叫「孤儿」。
+  if [[ -f "${ENV_FILE}" ]]; then
+    OLD_VAULT="$(grep '^VAULT=' "${ENV_FILE}" | cut -d= -f2)"
+    if [[ -n "${OLD_VAULT}" ]] && [[ "${OLD_VAULT}" != "0x" ]]; then
+      if [[ "$(cast code "${OLD_VAULT}" --rpc-url "${RPC_URL}" 2>/dev/null)" != "0x" ]]; then
+        echo "⚠️  旧金库 ${OLD_VAULT} 仍在链上（有新代码、仍可读）。"
+        echo "    本次会部署一个新的，旧的不会消失 —— 下游 env 必须指向新地址，"
+        echo "    否则页面读旧库、脚本写新库，两边状态会不一致。"
+      fi
+    fi
+  fi
   forge script script/Deploy.s.sol --rpc-url "${RPC_URL}" --broadcast --private-key "${ANVIL_KEY}" >/tmp/alphaplan-deploy.log 2>&1
   VAULT="$(jq -r '.receipts[0].contractAddress // empty' broadcast/Deploy.s.sol/"${CHAIN_ID}"/run-latest.json)"
   [[ -n "${VAULT}" ]] || { echo "部署失败，看 /tmp/alphaplan-deploy.log" >&2; exit 1; }

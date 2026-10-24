@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T07:17:07Z",
+  "asOf": 1792826227,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 11020,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40",
+      "temperature": 0,
+      "targetWethBps": 2200,
+      "confidence": 0.55,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, a strong ETH-led rotation that argues for building exposure from the current 0 bps; but BTC weakness shows risk appetite is not broad, so I keep the target moderate rather than chasing the move at the 60% cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893",
+      "temperature": 0,
+      "targetWethBps": 1200,
+      "confidence": 0.55,
+      "reason": "ETH's +5.26% rally against a -2.82% BTC session is a sharp divergence that usually signals fragile, unsustainable leadership in the higher-beta leg rather than broad risk appetite. With the vault already at 0 bps WETH, the broad-market weakness justifies staying near the low end of the range (12%) rather than chasing ETH strength."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54",
+      "temperature": 0,
+      "targetWethBps": 2000,
+      "confidence": 0.62,
+      "reason": "ETH's +5.26% day against BTC's -2.82% is a large, divergent tape — annualized ETH vol near 80% and cross-asset disagreement raise reversal risk, so sizing WETH well below the 60% cap protects redemptions if the move unwinds. Starting from 0 bps, a 20% allocation is a modest step that keeps NAV liquid without ignoring the vault's WETH mandate."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6",
+    "temperature": 0,
+    "targetWethBps": 1750,
+    "confidence": 0.55,
+    "rationale": "I discount the risk agent's unsupported annualized-vol and NAV-liquidity language; the supported bull/bear split suggests a roughly 17-18% allocation, so I set 1750 bps rather than the raw weighted mean of about 1808."
+  }
+}

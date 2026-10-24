@@ -219,18 +219,29 @@ contract AlphaPlanVault is ERC4626, ReentrancyGuard {
     /// @dev 注意**不能**调 `super.maxWithdraw`：OZ 的实现是
     ///      `previewRedeem(maxRedeem(owner))`，而 `maxRedeem` 已被我们改成
     ///      「现金上限」，会互相递归成一团错数字。这里直接按份额价折算。
+    /// @dev ERC-4626 规定这两个视图 **MUST NOT revert**。它们要读 NAV，
+    ///      而 NAV 在 feed 陈旧时会 revert StalePrice —— 所以必须 try/catch 回退到
+    ///      纯现金口径，否则 feed 停更 1 小时后任何按规范集成的 UI 都会崩。
     function maxWithdraw(address owner_) public view override returns (uint256) {
         uint256 cash = IERC20(asset()).balanceOf(address(this));
-        uint256 owed = _convertToAssets(balanceOf(owner_), Math.Rounding.Floor);
-        return cash < owed ? cash : owed;
+        try this.totalAssets() returns (uint256) {
+            uint256 owed = _convertToAssets(balanceOf(owner_), Math.Rounding.Floor);
+            return cash < owed ? cash : owed;
+        } catch {
+            return cash;
+        }
     }
 
     /// @notice 同 `maxWithdraw`，按当前份额价格折算成份额
     function maxRedeem(address owner_) public view override returns (uint256) {
         uint256 cash = IERC20(asset()).balanceOf(address(this));
-        uint256 sharesForCash = _convertToShares(cash, Math.Rounding.Floor);
-        uint256 held = balanceOf(owner_);
-        return sharesForCash < held ? sharesForCash : held;
+        try this.totalAssets() returns (uint256) {
+            uint256 sharesForCash = _convertToShares(cash, Math.Rounding.Floor);
+            uint256 held = balanceOf(owner_);
+            return sharesForCash < held ? sharesForCash : held;
+        } catch {
+            return cash == 0 ? 0 : cash; // 现金口径：1 份额 ≈ 1 USDC 的上界
+        }
     }
 
     /// @notice (lastPlanHash, lastTargetWethBps, lastNonce)
@@ -433,15 +444,19 @@ contract AlphaPlanVault is ERC4626, ReentrancyGuard {
 
         uint256 price = ethPrice();
         uint256 wethValue = usdcValueOfWeth(WETH.balanceOf(address(this)), price);
-        uint256 realizable = wethValue * (BPS - SLIPPAGE_BPS) / BPS;
-        // 卖光也不够：直接给自定义 error，不要白跑一笔 swap 再裸 revert
-        if (cash + realizable < assets) revert InsufficientLiquidity(assets, cash, wethValue);
+        // 准入判定必须对「本次缺口」，不能对「全仓折价」。
+        // 用全仓折价（wethValue*9950/10000）去比总资产会永久差 50bps ——
+        // 池子收 0.3%，所以"卖光刚好够"在数学上不成立，最后一个持有人永远退不出去。
+        // 缺口不会超过现金 + WETH 的实际价值，循环后的余额兜底会拦住真正不够的情况。
+        uint256 deficitNow = assets - cash;
+        if (deficitNow > wethValue) revert InsufficientLiquidity(assets, cash, wethValue);
 
         uint256 wethSold;
         uint256 usdcOut;
 
-        // 理论上一次就够（amountIn 用 ceil）。池子的手续费/滑点会让实际到账略少，
-        // 所以最多再补卖 3 次**差额**（几何收敛，不会多卖）。
+        // 第 1 笔按 oracle 价 ceilDiv，而池子收 0.3% 手续费，所以**第 1 笔必然差
+        // 约 30bps**，补卖分支一定会进。实测每次现金不足的赎回都是 2 笔 swap
+        // （第 2 笔只补差额，不会多卖）。上限 4 笔是防死循环的兜底。
         for (uint256 i; i < 4; i++) {
             cash = IERC20(asset()).balanceOf(address(this));
             if (cash >= assets) break;
