@@ -19,6 +19,9 @@
 > 我把 11:58 的编译错误报成 12:10 的结论，而文件在 12:00–12:02 已修好 —— 工人差点去修一个不存在的错。
 > 快照一律标注采集时间；`FAIL` 不带当次输出 = 无效。
 >
+> **v2.15（14:43 采集）**：两个合约修复经**正反验证**成立（改回旧逻辑对症用例立刻失败）；
+> 但 `Probe*.t.sol` 让 `forge test` 永远红 → A4 FAIL（§2.19）。正式套件 74 passed。
+>
 > **v2.14（14:42 采集）**：E7b 扩为三条（含 `eth_getCode` 探测法）；注入桩被真 MetaMask 覆盖（§2.18），
 > 但探测法已用真钱包验证有效；发现 w3m-modal 为空待 frontend 确认。
 >
@@ -650,6 +653,62 @@ E2 五项 / E6b 四项 / E6c-1 闭合与差分 / E6c-2 第二层未做且无「�
 
 > **一次自查**：我第一次跑回归时 E2 后四项报 FAIL —— 是我脚本在**总览屏**找金库数字。
 > 切到「金库与流水」后五项全在。**判据要指向正确的屏**，这也是「假红」的一种。
+
+### 2.19 两个合约修复经正反验证成立；但 probe 文件让 A4 变红（14:43）
+
+**修复 1｜`maxRedeem` / `maxWithdraw` 在 feed 陈旧时不 revert**
+
+```solidity
+try this.totalAssets() returns (uint256) { ... } catch { return cash; }
+```
+
+ERC-4626 规定这两个视图 **MUST NOT revert**，但它们要读 NAV，而 NAV 在 feed 陈旧时 revert `StalePrice`。
+不加 try/catch 的话，feed 停更 1 小时后任何按规范集成的 UI 都会崩。
+
+**反向验证**：拆掉 try/catch → `test_P0_MaxViewsDoNotRevertOnStaleFeed` 立刻 `FAIL: StalePrice(7200)` ✅
+
+**修复 2｜赎回准入判定：全仓折价 → 本次缺口**
+
+```solidity
+// 旧：uint256 realizable = wethValue * (BPS - SLIPPAGE_BPS) / BPS;
+//     if (cash + realizable < assets) revert InsufficientLiquidity(...);
+// 新：uint256 deficitNow = assets - cash;
+//     if (deficitNow > wethValue) revert InsufficientLiquidity(...);
+```
+
+旧式用「全仓折价」比「总资产」，**永久差 50bps** —— 池子收 0.3%，
+所以"卖光刚好够"在数学上不成立，**最后一个持有人永远退不出去**。
+
+**反向验证**（改回旧逻辑）：
+
+```
+[FAIL] test_P0_LastHolderCanFullyRedeem      InsufficientLiquidity(179999999, 100000000, 80000000)
+[FAIL] test_P0_MaxThenRemainderIsNotStuck    InsufficientLiquidity(80000001, 2, 80000000)
+```
+
+第二条最能说明问题：现金只剩 **2 wei**、WETH 值 8e7，旧逻辑判"不够"，新逻辑判"够"。
+**修复必要，不是过度防御。** 两处均已还原，`forge build` 0 error。
+
+#### A4 FAIL：`Probe*.t.sol` 让 `forge test` 永远红
+
+```
+test/Probe089b.t.sol   55 行（未跟踪，只有 SPDX 头，无用途注释）
+test/Probe2.t.sol      56 行（同上）
+
+forge test                          → 2 failed（都是 Probe 的 setUp）, 74 succeeded
+forge test --no-match-path "test/Probe*" → 74 passed; 0 failed
+```
+
+**为什么这是 FAIL 而不是"小问题"**：它违反 A4「测试全绿」，而且这两个文件**没有说明要验什么** ——
+一个不知道目的的红灯比红本身更糟，因为它会训练人忽略 `forge test` 的结果。
+
+**处置建议**（不自行修改）：临时调试 → 删除或改名离开 `*.t.sol`；fork 探针 → 修好 `setUp()` 并加用途注释。
+
+**A4 是否要加 `--no-match-path` 排除**：我倾向**不加**。「仓库里的测试全绿」本身就该是要求，
+probe 文件不该进仓库。若 PM 决定保留，则加排除的同时必须加一条「probe 文件必须有用途注释」。
+
+**正式套件已从 71 → 74 passed**（新增 `P0_MaxViewsDoNotRevertOnStaleFeed`、
+`P0_LastHolderCanFullyRedeem`、`P0_MaxThenRemainderIsNotStuck`）。
 
 ## A. 合约（P1）—— `src/contract`
 
