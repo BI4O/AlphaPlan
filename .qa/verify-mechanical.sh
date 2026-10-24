@@ -418,6 +418,31 @@ SUSP=$(git ls-files -z src 2>/dev/null | xargs -0 grep -nEi '(--private-key[[:sp
 INFO=$(git ls-files -z src 2>/dev/null | xargs -0 grep -cE '0x[0-9a-fA-F]{64}' 2>/dev/null | grep -v ':0$' | grep -v node_modules | wc -l | tr -d ' ')
 [[ "$INFO" -gt 0 ]] && echo "       注：$INFO 个文件含 64-hex 串（绝大多数应为 planHash/promptTemplateSha，人工抽查即可）"
 
+hdr "R. 渲染层闸门（需要 ego-browser + 页面在跑）"
+if ! command -v ego-browser >/dev/null 2>&1; then
+  skip R "ego-browser 未安装"
+elif ! curl -s -o /dev/null --max-time 3 http://127.0.0.1:3000/ 2>/dev/null; then
+  skip R "3000 端口无响应（pnpm dev 未起）"
+else
+  # 渲染闸门是独立脚本（用 ego-browser nodejs 跑）；退出码直接传导
+  RG=$ROOT/.qa/render-gate.mjs
+  if [[ -f "$RG" ]]; then
+    if ego-browser nodejs -e "await import('file://$RG')" >/tmp/qa-render.log 2>&1; then
+      ok R "渲染闸门通过（详见 /tmp/qa-render.log）"
+    else
+      # 把渲染闸门的失败项拉进主汇总，而不是只说一句"失败"
+      while IFS= read -r line; do
+        case "$line" in
+          *FAIL*) bad "R:$(echo "$line" | awk '{print $2}')" "$(echo "$line" | cut -c11-)" ;;
+          *SKIP*) info "R:$(echo "$line" | awk '{print $2}')" "$(echo "$line" | cut -c11-)" ;;
+        esac
+      done < <(grep -E '^  (FAIL|SKIP)' /tmp/qa-render.log)
+    fi
+  else
+    skip R "无 .qa/render-gate.mjs"
+  fi
+fi
+
 hdr "汇总"
 printf '  PASS %d   FAIL %d   WARN %d   SKIP %d   INFO %d\n' "$PASS" "$FAIL" "$WARN" "$SKIP" "$INFO"
 if [[ $WARN -gt 0 ]]; then
