@@ -19,6 +19,9 @@
 > 我把 11:58 的编译错误报成 12:10 的结论，而文件在 12:00–12:02 已修好 —— 工人差点去修一个不存在的错。
 > 快照一律标注采集时间；`FAIL` 不带当次输出 = 无效。
 >
+> **v2.23（16:07 采集）**：hydration mismatch 两层修复实测 **0**（含切 5 屏压力）；术语表/文案/两个格式化 bug 边界测试通过（§2.26）；
+> 发现 `use-is-client.ts` 注释「两个分支输出必须不同」写反（仅文档）。闸门 **PASS 54 / FAIL 0**。
+>
 > **v2.22（15:45 采集）**：B3 修法（content-addressed 存档）我独立验证通过（8/8 文件名==hash，13 份全 OK）；
 > 修我自己的第 10 例（B9b 锚定源码字面量）；**B1 是真问题但根因是 typescript@7 + @types/node**（§2.25）。
 >
@@ -1110,6 +1113,83 @@ jq '[paths(scalars) as $p | select($p[-1]=="promptTemplateSha")] | length' <plan
 - **A（推荐）** 改用 Bun API —— 实测可行：`Bun.write` / `Bun.file().exists()/.text()/.arrayBuffer()`
   探针 `bun check` → ✓ No type errors，运行正常；且符合 CLAUDE.md「Prefer Bun.file over node:fs」
 - **B** 把 `typescript` 从 `^7` 降到 `^5` —— 影响全仓工具链，不宜为一个测试文件动
+
+### 2.26 hydration mismatch：两层 bug，实测 0（含切 5 屏压力）
+
+#### 第一层：服务端与客户端答案不同
+
+`useAccount().isConnected` 服务端恒 `false`，hydrate 后立刻 `true`：
+
+```
+服务端（isConnected=false）            → "—"
+客户端（isConnected=true, allowance=null）→ "读取失败"
+```
+
+两边输出不同 → React 重建整棵树。
+
+**修法**：`lib/use-is-client.ts` 用 `useSyncExternalStore(noopSubscribe, () => true, () => false)`。
+`walletKnown = isClient && isConnected`，`!walletKnown → 一律 "—"`。
+
+**不用 `useEffect + setMounted`** 的理由：那会在 effect 里同步 setState，
+触发 `react-hooks/set-state-in-effect` 报错。这件事本质是「读一个只在客户端为真的外部事实」，
+正是 `useSyncExternalStore` 的用途。
+
+#### 第二层：`null` 同时表示三件事
+
+`allowance: bigint | null` 这个 `null` 被「没连钱包 / 还在读 / 读失败了」三者共用 →
+UI 只能挑一个说法 → **loading 期间也显示「读取失败」，那是在陈述一件没发生过的事。**
+
+**修法**：拆三态，新增 `readError: string | null`
+（`app/_wallet/use-fund-data.ts:49`），渲染分三支：
+`loading → "读取中…"` / `readError → "读取失败"（title 显示原因）` / `否则 → 实际值`。
+
+> 这条诊断是本轮最有价值的：**用 loading 的样子陈述一件没发生过的事**，
+> 比"显示错了"更糟 —— 它不报错、无法被日志发现。
+
+#### 我实测：0 mismatch（压力版）
+
+注入 `console.error` 捕获器（在页面脚本前），然后**依次切 5 个屏**
+（辩论 → 链路 → 自验 → 金库 → 总览）触发更多渲染：
+
+```
+hydration mismatch 数量: 0
+```
+
+比"打开首页看一眼"更严，因为切屏会重新渲染多个原本隐藏的子树。
+
+#### 术语表 + 三个文案改动（已核实实际渲染）
+
+| 项 | 实测 |
+|---|---|
+| 主标签 | 「基金总值 NAV」✅ |
+| 主值 | 「40%」+ 小字「4000 bps」✅ |
+| 副标题 | 「三个 agent 各自目标平均 36%，AI 裁决比均值 +400 bps」✅ |
+| 「较算术均值」 | **已消失**（页面 grep 未找到）✅ |
+
+**第三个 bug 值得记**：主值 40% 是 AI 裁决、副标题 36% 是 agent 平均，
+两个都对但主语不同，并排读会以为矛盾。**补主语而不是改数字是对的** —— 因为没有一个数字是错的。
+
+#### 两个格式化 bug 的边界测试（我独立复现逻辑后跑）
+
+```
+percentOf(1875) = 18.75%   旧 toFixed(0) → 19%（多报 0.25pp）✅已修
+percentOf(4000) = 40%   (3719)=37.19%   (1496)=14.96%   (50)=0.5%   (0)=0%
+
+signedBps(0.4)  = 0 bps    旧 delta>0 判真 → 四舍五入 0 → "+0" ✅已修
+signedBps(-0.4) = 0 bps    (0)=0 bps   (-0.5)=0 bps   (400)=+400   (-1000)=-1000
+```
+
+#### 一处注释写反了（仅文档，不影响功能）
+
+`lib/use-is-client.ts` 结尾原文：
+
+> 关键是**两个分支的输出必须不同**：如果服务端渲染「—」、客户端也渲染「—」，那就不需要这个 hook
+
+**这句反了。** 正确做法恰恰是**两边输出相同**（服务端 "—"、hydration 期 "—"），
+所以 `walletKnown ? 值 : "—"` 在服务端与 hydration 期都走 "—" 分支 —— 这**正是**它有效的原因。
+如果两边输出不同，才会 mismatch。
+
+建议改为：「关键是**两个分支在服务端与 hydration 期必须走同一条**」。
 
 ## A. 合约（P1）—— `src/contract`
 
