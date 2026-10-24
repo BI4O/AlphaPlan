@@ -550,7 +550,7 @@ PROBE_RC=$?
 | 项 | 结果 | 关键证据 |
 |---|---|---|
 | **E2** 金库五项 | **PASS** | 与 `cast` 逐项比对：19.99 / 0.9995 / 85.0% / 15.0% / 20.00 全一致 |
-| **E2 失败态** | **SKIP** | `SIGSTOP` anvil 后页面仍返回同一 52319b（dev 缓存层挡住，请求没打到 RPC）；需 build+start 或绕缓存才能验 |
+| **E2 失败态** | **PASS（代码级）** | `SIGSTOP` anvil 后页面仍返回同一内容（dev RSC 缓存挡住，请求未达 RPC）→ 运行时验不了。改读实现：`book.tsx:51` `{vault ? 值 : "—"}` + 副标题 `data.vault.reason`（**不显示 0**）；`chain.ts:59 reasonFrom()` 取 viem `shortMessage`；`data.ts:12` `Promise.all` 四路独立降级「一个源挂了不会让整页白屏」。**强度说明**：验的是代码路径而非运行时渲染，若上游把 reason 覆盖为空看不出来 |
 | **E3** 辩论卡 | **PASS** | 计划文件独立复核：bull/bear/risk = 3500/1500/1000 → 均值 2000，judge 1500 → **−500 bps** 与页面一致；另有标尺图同轴呈现 |
 | **E4/E4-P1** 哈希自验 | **PASS** | 我独立算 `0xe1fd6d14…48ba5` == 链上 `lastPlanHash` == 页面 `onchainHash` == 页面 `fileHash`；2406 B 一致 |
 | **E5①** 正确 id | **PASS** | API 200 / 2406b / 与磁盘文件 `cmp` 逐字节相同 |
