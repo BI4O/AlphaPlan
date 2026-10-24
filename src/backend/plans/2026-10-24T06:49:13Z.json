@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T06:49:13Z",
+  "asOf": 1792824553,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 4000,
+      "confidence": 0.62,
+      "reason": "ETH is up 5.26% over 24h to $3,696.39 while BTC is down 2.82%, showing clear relative strength and rotation into ETH. With the vault at 0 bps WETH, a 40% allocation captures this momentum while staying well below the 60% cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 1000,
+      "confidence": 0.55,
+      "reason": "ETH's +5.26% to $3696 against BTC's -2.82% to $80788 is a wide divergence, and ETH/BTC spikes on a weakening BTC tape often mean-revert, so I'd keep exposure light at ~10% rather than chase; the $20 NAV with 0 bps WETH also means entry costs are material relative to the position."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 1000,
+      "confidence": 0.68,
+      "reason": "ETH +5.26% in 24h against BTC -2.82% is an ~8pt divergence signaling elevated volatility, so I'd keep the $20 NAV mostly in cash rather than chase the move from the current 0 bps. A 10% starter keeps redemption capacity fully intact while limiting drawdown if ETH mean-reverts."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 1000,
+    "confidence": 0.66,
+    "rationale": "The raw mean of the three targets is 2000 bps, but I side with the risk and bear agents' 1000 bps because both cite elevated volatility and the tiny $20 NAV, and the risk agent carries the highest confidence; the bull's momentum thesis is plausible but not enough to override the cautious consensus."
+  }
+}

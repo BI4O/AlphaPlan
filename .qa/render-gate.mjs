@@ -92,7 +92,7 @@ if (ethMatches.length === 0) {
 }
 
 // ---------- R5/E7a: 连接钱包时必须显示网络标识 ----------
-const netShown = /chainId|84532|Base Sepolia|Base测试网|网络|localChain/i.test(text);
+const netShown = /chainId|31337|84532|Base Sepolia|Base测试网|网络|localChain|本地/i.test(text);
 if (!walletConnected) {
   warn("R5", "钱包未连接，E7a（网络标识）未被真正检验");
 } else if (netShown) {
@@ -102,7 +102,8 @@ if (!walletConnected) {
 }
 
 // ---------- R6/E7b: 钱包连的链到底对不对（探测法）----------
-// 关键：anvil --fork-url 继承源链 chainId，本地 fork 与真 Base Sepolia 都是 84532。
+// 注意：当前环境用 `--chain-id 31337` 覆盖了 fork 继承的 84532（PM 决定）。
+// E7b-2 仍然必要：用户钱包可能连着别的 31337 网络（如裸 anvil），那上面没有我们的合约。
 // 所以不能只看 chainId，必须探 eth_getCode(VAULT)。
 // window.ethereum 不暴露 RPC URL，这是唯一可靠的办法。
 if (!walletConnected) {
@@ -117,17 +118,18 @@ if (!walletConnected) {
     return out;
   }, process.env.VAULT_ADDRESS || "0x8f7a1defa8b06a8d66ea14a71a2ef2ce4ba1295b");
 
-  const chainOk = probe.chainId === "0x14a34";         // 84532
+  const EXPECT = process.env.EXPECT_CHAIN_ID_HEX || "0x7a69"; // 31337
+  const chainOk = probe.chainId === EXPECT;
   const hasCode  = typeof probe.code === "string" && probe.code !== "0x" && probe.code.length > 2;
   const warns    = /网络不匹配|chainId|连的不是|合约不存在|请检查 RPC|切到|switch/i.test(text);
   if (!chainOk) {
     // E7b-1：chainId 不对，页面必须警告
-    if (warns) ok("R6a", `E7b-1 成立：钱包 chainId=${probe.chainId}（≠84532），页面已警告`);
-    else bad("R6a", `E7b-1 FAIL：钱包 chainId=${probe.chainId}（≠84532），页面无警告`);
+    if (warns) ok("R6a", `E7b-1 成立：钱包 chainId=${probe.chainId}（≠${EXPECT}），页面已警告`);
+    else bad("R6a", `E7b-1 FAIL：钱包 chainId=${probe.chainId}（≠${EXPECT}），页面无警告`);
   } else if (!hasCode) {
     // E7b-2：chainId 对但读不到合约 → 连错 RPC
     if (warns) ok("R6b", "E7b-2 成立：chainId 正确但 eth_getCode(VAULT)=0x，页面已警告连错链");
-    else bad("R6b", "E7b-2 FAIL：chainId 正确但 eth_getCode(VAULT)=0x（连到真 Base Sepolia 了），页面无警告");
+    else bad("R6b", "E7b-2 FAIL：chainId 正确但 eth_getCode(VAULT)=0x（连到别的同 chainId 网络），页面无警告");
   } else {
     // E7b-3：都正常 → 不应有警告
     if (warns) bad("R6c", "E7b-3 FAIL：链正常但页面常驻显示警告（会变噪音）");

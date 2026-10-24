@@ -71,44 +71,52 @@
 
 ---
 
-## 0. **当前环境（换端口 8546，全新环境，2026-10-24 14:46 采集）**
+## 0. **当前环境（8545 + chainId 31337，2026-10-24 14:50 采集）**
 
 ```
 VAULT_ADDRESS = 0x8f7a1defa8b06a8d66ea14a71a2ef2ce4ba1295b   （地址未变）
-DEPLOY_BLOCK  = 49512360                                       （已变）
-RPC_URL       = http://127.0.0.1:8546                          （8545 已停）
-CHAIN_ID      = 84532
+DEPLOY_BLOCK  = 49513273                                       （已变，第三次换环境）
+RPC_URL       = http://127.0.0.1:8545
+CHAIN_ID      = 31337
+                 ↑ fork 源自 Base Sepolia（84532），但 anvil 用 --chain-id 覆盖成 31337
+                 这是 PM 的决定：fork 拿到真合约依赖，chainId 用 anvil 默认值
 ```
 
-**PM 报的 7 项，逐个独立复核，全部一致：**
+**独立复核（14:50:41）—— 与 PM 数据一致，且额外确认了 fork 依赖都有代码：**
 
-| 项 | 链上实测 | PM 报的 |
+| 项 | 实测 | |
 |---|---|---|
-| 合约字节码 | 39 981 B | — ✅ |
-| `totalAssets` | 20 000 000 | 20,000,000 ✅ |
-| `totalSupply` | 20 000 000 | 20,000,000 ✅ |
-| `lastNonce` | 0 | 0 ✅ |
-| `currentWethBps` | 0 | 0 ✅ |
-| 金库现金 | 20 000 000 | 全现金 ✅ |
-| account0 USDC | 24 354 929 | 24.354929 ✅ |
-| account0 份额 | 20 000 000 | 20.000000 ✅ |
+| `chainId` | 31337 | ✅ |
+| 块高 | 49,513,277 | — |
+| 金库字节码 | 39,981 B | ✅ |
+| `totalAssets` | 20 000 000 | ✅ |
+| `lastNonce` | 0 | ✅ |
+| USDC / WETH / Router / Feed 代码 | 3599 / 4085 / 48997 / 2655 B | ✅ **fork 依赖完整** |
 
-**空白环境 = 所有「事务类」判据暂时无数据**，这是预期不是缺陷：
+> 这条额外确认很重要：PM 单独在 8555 验证过「裸 anvil 31337 上这些地址全是 `0x`」。
+> 现在它们都有代码 → 说明这确实是 **fork + chain-id 覆盖**，不是裸链。
 
-- `PlanExecuted` / `PlanRecorded` / `LiquiditySold` 均为 **0 条**
-- E3 辩论卡、E4 哈希自验、E6b 双流、E6c-1 对账 都需要「至少一次执行」才有内容
-- A11b–A11g（赎回自动卖 WETH）、D3/D7（广播与反重放）需要主动写链，**必须 PM 协调**
+### ⚠️ chainId 改 31337 削弱了 E7b 的一个价值，必须记下
 
-#### 时间对齐实测：块时间比墙钟**慢 41s 并持续扩大**
+原来 chainId 是 **84532**，与真 Base Sepolia **相同** —— 这正是 E7b-2 存在的理由：
+用户钱包可能连着真 Base Sepolia（chainId 相同、RPC 不同、合约为空）。
 
-```
-块时间 1792824369   墙钟 1792824410   差 −41s（PM 报 ~11s）
-feed updatedAt 1792824363 → 相对块时间 age = 6s（阈值 3600s，充足）
-```
+现在改成 **31337**（anvil 默认），这个"同 chainId 不同 RPC"的陷阱**消失了**，
+E7b-1（chainId 不等就警告）反而变得容易触发、E7b-2 变成较少见的场景。
 
-原因：anvil 没有新交易时不出块，`--timestamp` 只在启动时对齐。
-**不影响合约判据**（合约用 `block.timestamp`，不是墙钟），但**演示前必须 `anvil_mine` 一次**
-让块时间跟上，否则 `MAX_PLAN_AGE`（3600s）会以块时间为准、看起来"计划很新鲜"而实际上过了 1 小时墙钟。
+**但 E7b-2 不能删**：用户仍可能连着别的 31337 网络（裸 anvil、Hardhat），
+那上面 USDC/WETH/Router 全无代码。探测法（`eth_getCode(VAULT)`）依然能抓住。
+
+**这不是缺陷，是权衡**：PM 换了 chainId 换取「fork 依赖 + anvil 默认值」的简化。
+记录在此，避免以后有人以为 E7b-2 是多余的。
+
+### 空环境 = 事务类判据 SKIP
+
+`PlanExecuted` / `PlanRecorded` / `LiquiditySold` 均 **0 条**，`lastNonce = 0`。
+E3、E4、E6b、E6c-1、D3、D7 需要至少一次执行才有内容 → 判 **SKIP**。
+A11b–A11g（赎回自动卖 WETH）需要主动写链 → 必须 PM 协调。
+
+**PM 已说明将执行一次 onReport，届时我重采快照。**
 
 ---
 
@@ -858,9 +866,9 @@ probe 文件不该进仓库。若 PM 决定保留，则加排除的同时必须�
 | **E6c-1** | **硬对账（差分净额口径）** | 两条平衡式（**按实现的净额口径判**，不要求"只统计 swap tx"）：<br>`balance(N) − balance(deployBlock−1) == Transfer.in − Transfer.out`（只算 `from/to == vault`，`topic0==Transfer`）<br>USDC 与 WETH 各一条，**均须严格相等**。① 差分，禁止 `in−out==balance`；② **快照一致性**：一个 `N` 用到底（`getLogs.toBlock`、`balanceOf.blockNumber`、UI 显示三处同源）；③ UI 显示两个端点块号；④ 不等时显示差额数值+块号区间。<br>**为什么放宽**：净额口径每条 Transfer 只数一次，**天然免疫存款双计**，比"按事件分类求和"更稳（PM 14:10 验证实现并认可） | ✓ |
 | **E6c-2** | **解释层（不是判定依据）** | 分项显示 价格效应 / 期间费用 / 已实现滑点；端点 feed 陈旧时显示「无法估值对账」+ **缺哪个源**（哪个 feed、age 多少）；**不得出现"通过/不通过"字样**——它是解释，不是判据。任何把它渲染成绿勾/红叉的实现 = FAIL | ✓ |
 | **E6c-3** | **四条负向测试（必须都能红）** | ① 改一笔 `LiquiditySold.usdcOut` → 非零差额；② **把同一条 Transfer 的金额同时计入 `in` 和 `out`** → 必须不闭合（净额口径下这才是有效的"双计"用例；"删掉 Deposit 事件"对它不适用）；③ **快照错位**：`balanceOf` 用 `latest` 而 `getLogs` 用 `toBlock` → 必须不闭合；④ 分块失效：把 `LOG_CHUNK` 调到 >300 → 大跨度必然被上游拒（E6c-d3 已覆盖）。**四条任一仍显示闭合 = FAIL** | ✓ |
-| **E7a** | **钱包连接后必须显示网络标识** | 连接钱包后，页面必须显示 `chainId` 或网络名（如 `84532` / `Base Sepolia`）。**只说「已连接」不算** —— 用户需要知道自己在哪条链上 |
-| **E7b-1** | **chainId ≠ 84532 → 警告** | 钱包连到别的链（如 `0x1` 主网 / `0x7a69`=31337 anvil 默认）时，页面必须显示可见警告，不能静默继续 |
-| **E7b-2** | **chainId === 84532 但 `eth_getCode(VAULT)` === `0x` → 也警告** | **这是本轮新加的**：`anvil --fork-url` 会**继承源链 chainId**，所以本地 fork 与真 Base Sepolia **chainId 都是 84532**。MetaMask 只看 chainId 不区分 RPC —— 用户若加过真 Base Sepolia，钱包会连到那边，而那上面我们的合约是空的。判据用**探测法**（`window.ethereum` 不暴露 RPC URL）：连上后调 `eth_getCode(VAULT, "latest")`，返回 `0x` 或抛错即判连错链 |
+| **E7a** | **钱包连接后必须显示网络标识** | 连接钱包后，页面必须显示 `chainId` 或网络名（当前 `31337`；应为「本地 anvil fork」而非「Base Sepolia」）。**只说「已连接」不算** —— 用户需要知道自己在哪条链上 |
+| **E7b-1** | **chainId ≠ 31337 → 警告** | 当前环境 `--chain-id 31337`。钱包连到别的链（如 `0x1` 主网 / `0x14a34`=84532）时，页面必须显示可见警告，不能静默继续 |
+| **E7b-2** | **chainId 正确但 `eth_getCode(VAULT)` === `0x` → 也警告** | chainId 相同不代表 RPC 相同：用户可能连着别的 31337 网络（如裸 anvil，上面 USDC/WETH/Router 全无代码）。MetaMask 只看 chainId 不区分 RPC。判据用**探测法**（`window.ethereum` 不暴露 RPC URL）：连上后调 `eth_getCode(VAULT, "latest")`，返回 `0x` 或抛错即判连错链 |
 | **E7b-3** | **两者都正常 → 无警告** | 不得常驻显示警告（会变成噪音，用户学会忽略） |
 | **E7c** | **任何余额必须标注归属地址** | 页面不得出现"裸数字"。`6.0000 ETH` 这种必须能追溯到它属于哪个地址（`0x802f…4d87`），否则用户无法判断这是金库的、自己的、还是别人的 |
 | ~~E7（旧）~~ | ~~不暗示钱包连接/申赎表单~~ | **判据已作废**（见 §2.16）：用户原始需求就包含"连钱包、买基金、卖基金"，PM 已推翻 PRD §13 的 v1 范围限制 |
@@ -883,7 +891,7 @@ CDP Page.addScriptToEvaluateOnNewDocument 注入 EIP-1193 桩（anvil account0�
 **但 E7b-2 的探测法已用真钱包验证有效**（这是该判据的核心技术）：
 
 ```
-eth_chainId  → "0x7a69"（31337 ≠ 84532）        → 触发 E7b-1 场景
+eth_chainId  → "0x7a69"（31337 = 当前环境）      → 不触发 E7b-1
 eth_getCode(VAULT) → 完整字节码 39561 B         → 说明它连的 RPC 指向本地 anvil
 若连真 Base Sepolia → 返回 "0x"                 → 触发 E7b-2 场景
 ```
