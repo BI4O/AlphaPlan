@@ -19,6 +19,9 @@
 > 我把 11:58 的编译错误报成 12:10 的结论，而文件在 12:00–12:02 已修好 —— 工人差点去修一个不存在的错。
 > 快照一律标注采集时间；`FAIL` 不带当次输出 = 无效。
 >
+> **v2.22（15:45 采集）**：B3 修法（content-addressed 存档）我独立验证通过（8/8 文件名==hash，13 份全 OK）；
+> 修我自己的第 10 例（B9b 锚定源码字面量）；**B1 是真问题但根因是 typescript@7 + @types/node**（§2.25）。
+>
 > **v2.21（15:40 采集）**：**DEPLOY_BLOCK 需用链上事实反推**（二分得 49522615，我上轮误信配置文件）；
 > E2/E3/E4/E6b/E6c-1 全 PASS；**B3 FAIL = prompts 改写让 8 份历史计划永久不可校验**（§2.24，动摇核心卖点）。
 >
@@ -1030,6 +1033,83 @@ prompts/*.txt 在 15:16~15:17 被改写（bull 931B → 1370B 等）
 | C | **prompts 冻结**：改 prompt 必须新建 `prompts/v2/`，计划里记版本 | 从根上让"改 prompt 不破历史" |
 
 **我倾向 C + A**，但这是产品决策。
+
+### 2.25 B3 修法：content-addressed prompt 存档（我认可，比我的三个选项高一层）
+
+PM 的修法重新定义了问题：
+
+| | 问法 | 结果 |
+|---|---|---|
+| 旧 | 「这份计划是不是用**当前** prompt 生成的？」 | 改 prompt 就全红 |
+| 新 | 「它**当时**用的那份原文，我们还能不能拿出来？」 | 历史可重建 |
+
+> **审计不要求历史与现在相同，只要求历史可重建。**
+
+我原来的三个选项（归档 / 文件内存副本 / 冻结版本）**都还在问"当前 prompt 对不对"**。
+
+#### 设计：`prompts/archive/<keccak256>.txt`
+
+- 文件名**就是**它自己的校验和 → 内容寻址，改 prompt 是**新增**不是覆盖
+- 校验时按 hash 反查，不按 agent 名找当前版本
+- **归档在调 LLM 之前做**（计划可能已写下新哈希，事后归档会留空洞）
+- 每次 `bun run debate` 自动归档
+
+#### 我独立验证的最关键性质：文件名真的等于内容哈希
+
+```
+8 份归档，逐个 cast keccak 与文件名比对 → 8/8 全部相等
+0x255c3df0… 1375B  0x2854e9da… 1105B  0x345570c2… 1370B  0x3497e792…  936B
+0x9454be8a… 1744B  0xb8421165… 1894B  0xceb2a196…  931B  0xd37d3c2b… 1156B
+```
+
+`bun run debate --check` → **OK: 13 plan(s) validated against plans.lock.json** ✅（原红 32 项）
+
+**当前 prompt 哈希**（我用 `cast keccak` 逐个复核过，与 PM 给的一致）：
+
+```
+bull  0x345570c250d49d35e5b494f36e0ce66a0bfe0825c7329ca4e3bd46c6d8875c40
+bear  0x255c3df0f739dde53ee02f00fc6fde562343025fd9495650e61db4eb2a43f893
+risk  0xb8421165f59cb79d7f27fe590994864146acd7793eb1329e04ea6b28d14f1c54
+judge 0x9454be8abbe5960b1c49151b0c1242e55eba2b82ce81f534c29b461730d739c6
+```
+
+#### 我的第 10 例：B9b 判据依赖了实现形式
+
+原判据 `grep -c 'promptTemplateSha' debate.ts ≥ 4`。
+实现重构成「1 处泛化写入 `template.keccak256` × 4 次调用」→ 源码只出现 3 次 → **假红**。
+
+改成检查**实际产物**：
+
+```bash
+jq '[paths(scalars) as $p | select($p[-1]=="promptTemplateSha")] | length' <plan.json>
+→ 4   （bull / bear / risk / final 齐全）
+```
+
+**第 10 例的教训**：判据不能锚定"源码里出现几次某个字符串" —— 那是实现细节，
+重构就会假红。**要判行为产物。**
+
+#### B1 是真问题，但根因在工具链
+
+`bun check` 报 7 个 TS2349，全部指向 `prompts.test.ts` 里的 `node:fs` 具名函数
+（`mkdtempSync` / `mkdirSync` / `copyFileSync` / `readFileSync` / `existsSync`）→ 全被推成 `never`。
+
+**三级排查**：
+
+1. **最小复现**：只 import `{ mkdtempSync, readFileSync } from "node:fs"` 的新文件 → 同样 TS2349
+   → **与 prompts.ts 无关**
+2. `node_modules/@types/node/fs.d.ts` 里三处重载都在 ✅
+3. 试 `types: ["bun","node"]` → 仍报错，不是 types 收窄
+
+**根因**：`package.json` 写 `"typescript": "^7"`，实际装 **TypeScript 7.0.2**，
+与 `@types/node` 22.20.5 的 `export function` 声明形式不兼容。
+
+**为什么现在才炸**：全仓**只有 `prompts.test.ts`** 直接用 `node:fs` 具名函数；
+其他地方都用 `Bun.file` / `Bun.write`（符合 CLAUDE.md）。这条新测试是第一个踩进来的。
+
+**两条修法**（未定，属 backend 范围）：
+- **A（推荐）** 改用 Bun API —— 实测可行：`Bun.write` / `Bun.file().exists()/.text()/.arrayBuffer()`
+  探针 `bun check` → ✓ No type errors，运行正常；且符合 CLAUDE.md「Prefer Bun.file over node:fs」
+- **B** 把 `typescript` 从 `^7` 降到 `^5` —— 影响全仓工具链，不宜为一个测试文件动
 
 ## A. 合约（P1）—— `src/contract`
 

@@ -171,8 +171,21 @@ for f in model promptTemplateSha temperature; do
   grep -q "$f" $S 2>/dev/null && ok "B9:$f" "schema 有 $f" || bad "B9:$f" "schema 缺 $f"
 done
 if [[ -f $BE/src/debate.ts ]]; then
-  C=$(grep -c 'promptTemplateSha' $BE/src/debate.ts 2>/dev/null | head -1); C=${C:-0}
-  [[ "$C" -ge 4 ]] && ok B9b "写入器含 promptTemplateSha ×${C}（三轮+final ≥4）" || bad B9b "写入器只出现 $C 次 promptTemplateSha（<4，final 可能漏了）"
+  # 判「实际产物」而不是「源码字面量」：
+  # 实现可能写 4 处字面量，也可能写 1 处泛化写入 × 4 次调用（当前是后者）。
+  # 数源码出现次数会假红 —— 第 10 例：判据依赖具体实现形式。
+  SAMPLE=$(ls $BE/plans/*.json 2>/dev/null | tail -1)
+  if [[ -z "$SAMPLE" ]]; then
+    info B9b "plans/ 为空，无法检查实际产物"
+  else
+    N=$(jq '[paths(scalars) as $p | select($p[-1]=="promptTemplateSha")] | length' "$SAMPLE" 2>/dev/null || echo 0)
+    NAMES=$(jq -r '[.rounds[]|.agent] + ["final"] | join(",")' "$SAMPLE" 2>/dev/null)
+    if [[ "$N" -eq 4 ]]; then
+      ok B9b "实际产物含 4 处 promptTemplateSha（${NAMES}）"
+    else
+      bad B9b "实际产物只有 ${N} 处（应 4：bull/bear/risk/final；实际 ${NAMES}）"
+    fi
+  fi
   grep -q 'serializePlan' $BE/src/debate.ts && ok B11 "写入器是 serializePlan（可做往返测试）" || bad B11 "找不到 serializePlan"
 fi
 
