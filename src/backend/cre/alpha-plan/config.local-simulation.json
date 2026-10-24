@@ -3,7 +3,7 @@
   "chainSelectorName": "ethereum-testnet-sepolia-base-1",
   "vaultAddress": "0x8f7a1DEFa8B06a8d66ea14a71A2eF2CE4bA1295b",
   "feedAddress": "0xa24A68DD788e1D7eb4CA517765CFb2b7e217e7a3",
-  "planUrl": "http://127.0.0.1:8788/2026-10-24T04:45:35Z.json",
+  "planUrl": "http://127.0.0.1:8788/latest.json",
   "maxWethBps": 6000,
   "maxPlanAgeSeconds": 3600,
   "feedMaxStalenessSeconds": 3600,

@@ -22,7 +22,7 @@ import {
   type PlanLock,
 } from "./canonical.ts";
 import { LLM_TEMPERATURE, completeJson, errorMessage, llmFromEnv, type LlmConfig } from "./llm.ts";
-import { readMarket } from "./market.ts";
+import { readChainTime, readMarket } from "./market.ts";
 import {
   loadPromptTemplates,
   renderAgentUserMessage,
@@ -79,13 +79,21 @@ type Args = {
   mode: Mode;
   planDir: string;
   promptsDir: string;
+  /** Allow --check to drop lock entries whose plan file no longer exists. */
+  prune: boolean;
   asOf?: number;
   vault?: `0x${string}`;
   help: boolean;
 };
 
 export function parseArgs(argv: string[]): Args {
-  const args: Args = { mode: "live", planDir: DEFAULT_PLAN_DIR, promptsDir: DEFAULT_PROMPTS_DIR, help: false };
+  const args: Args = {
+    mode: "live",
+    planDir: DEFAULT_PLAN_DIR,
+    promptsDir: DEFAULT_PROMPTS_DIR,
+    prune: false,
+    help: false,
+  };
   const flags = { offline: false, check: false };
 
   const value = (i: number, name: string): string => {
@@ -101,6 +109,11 @@ export function parseArgs(argv: string[]): Args {
         break;
       case "--check":
         flags.check = true;
+        break;
+      case "--prune":
+        // Deliberately explicit: dropping a seal entry says "this plan is gone
+        // on purpose", which must never happen implicitly during a check.
+        args.prune = true;
         break;
       case "--help":
       case "-h":
@@ -137,6 +150,7 @@ const USAGE = `usage: bun run debate [--offline | --check] [--dir <plans-dir>] [
   (no flags)   read Chainlink feeds + vault, run bull/bear/risk + judge, write plans/<planId>.json
   --offline    emit the fixed sample without touching the network (deterministic bytes)
   --check      validate every plan and its hashes; exit 1 on any drift
+  --prune      with --check: drop seal entries whose plan file was deleted on purpose
   --as-of      override the plan timestamp (demo: --offline --as-of "$(date -u +%s)")
   --vault      vault address for input.vault (or set VAULT_ADDRESS)
 
@@ -278,7 +292,7 @@ async function askJudge(
   throw new Error(`judge never produced a valid verdict: ${errorMessage(lastError)}`);
 }
 
-async function livePlan(args: Args): Promise<Plan> {
+async function livePlan(args: Args): Promise<{ plan: Plan; chainNow: number }> {
   const config = llmFromEnv();
   if (!config) {
     throw new Error(
@@ -300,7 +314,11 @@ async function livePlan(args: Args): Promise<Plan> {
   );
   const verdict = await askJudge(config, prompts.judge!, snapshot.input, opinions, snapshot.degraded, snapshot.notes);
 
-  const asOf = args.asOf ?? Math.floor(Date.now() / 1000);
+  // asOf comes from the chain, not the wall clock. The vault compares it with
+  // block.timestamp (`asOf <= block.timestamp`, then MAX_PLAN_AGE), so a
+  // wall-clock value on a fork whose head block is minutes behind produces a
+  // plan that is "from the future" and can never be reported.
+  const asOf = args.asOf ?? snapshot.chainNow;
   const plan = parsePlan({
     planId: isoSeconds(asOf),
     asOf,
@@ -336,7 +354,7 @@ async function livePlan(args: Args): Promise<Plan> {
   console.log(`       ${plan.final.rationale}`);
   console.log("");
 
-  return plan;
+  return { plan, chainNow: snapshot.chainNow };
 }
 
 // -------------------------------------------------------------- persistence
@@ -398,7 +416,11 @@ export type PlanProblem = { file: string; message: string };
  * and the numbers look fine" is not the bar: the bytes must be exactly what this
  * codebase's writer produces.
  */
-export async function checkPlans(planDir: string, promptsDir = DEFAULT_PROMPTS_DIR): Promise<PlanProblem[]> {
+export async function checkPlans(
+  planDir: string,
+  promptsDir = DEFAULT_PROMPTS_DIR,
+  options: { prune?: boolean } = {},
+): Promise<PlanProblem[]> {
   const problems: PlanProblem[] = [];
   const lockPath = lockPathFor(planDir);
 
@@ -539,8 +561,19 @@ export async function checkPlans(planDir: string, promptsDir = DEFAULT_PROMPTS_D
     }
   }
 
-  for (const id of Object.keys(lock.plans)) {
-    if (!seen.has(id)) problems.push({ file: lockPath, message: `lists plan "${id}" but ${planDir}/${id}.json is missing` });
+  const orphans = Object.keys(lock.plans).filter((id) => !seen.has(id));
+
+  if (orphans.length > 0 && options.prune) {
+    for (const id of orphans) delete lock.plans[id];
+    await Bun.write(lockPath, serializeLock(lock));
+    for (const id of orphans) console.log(`pruned ${lockPath}: dropped "${id}" (file is gone)`);
+  } else {
+    for (const id of orphans) {
+      problems.push({
+        file: lockPath,
+        message: `lists plan "${id}" but ${planDir}/${id}.json is missing (run with --prune if it was deleted on purpose)`,
+      });
+    }
   }
 
   return problems;
@@ -557,7 +590,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (args.mode === "check") {
-    const problems = await checkPlans(args.planDir, args.promptsDir);
+    const problems = await checkPlans(args.planDir, args.promptsDir, { prune: args.prune });
     const lock = await readLock(lockPathFor(args.planDir));
 
     if (problems.length > 0) {
@@ -573,11 +606,19 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   const prompts = await loadPromptTemplates(args.promptsDir);
-  const plan = args.mode === "offline" ? offlinePlan(args.asOf ?? DEFAULT_OFFLINE_AS_OF, prompts) : await livePlan(args);
+  const run =
+    args.mode === "offline"
+      ? { plan: offlinePlan(args.asOf ?? DEFAULT_OFFLINE_AS_OF, prompts), chainNow: undefined }
+      : await livePlan(args);
+  const plan = run.plan;
 
   const written = await persist(plan, args.planDir);
   const size = new TextEncoder().encode(serializePlan(plan)).length;
 
+  if (run.chainNow !== undefined) {
+    const skew = plan.asOf - run.chainNow;
+    console.log(`asOf    ${plan.asOf}  (chain ${run.chainNow}, Δ ${skew >= 0 ? "+" : ""}${skew}s)`);
+  }
   console.log(`planId  ${plan.planId}${plan.degraded ? "  [degraded]" : ""}`);
   console.log(`file    ${written.path}  (${size} bytes, validity ${plan.validitySeconds}s)`);
   console.log(`keccak  ${written.keccak}`);

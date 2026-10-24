@@ -328,3 +328,25 @@ describe("RPC failure is an environment error, not a silent degradation", () => 
     }
   });
 });
+
+describe("--prune drops seal entries for deliberately deleted plans", () => {
+  test("--check refuses orphans; --check --prune removes them", async () => {
+    const { planDir } = scratch();
+    expect(debate(["--offline", "--dir", planDir]).code).toBe(0);
+    const lock = parseLock(await readText(lockPathFor(planDir)));
+
+    // Simulate a deliberate deletion (a clean-up, not drift).
+    const victim = Object.keys(lock.plans)[0]!;
+    Bun.spawnSync(["rm", join(planDir, lock.plans[victim]!.file)]);
+
+    const strict = debate(["--check", "--dir", planDir]);
+    expect(strict.code).not.toBe(0);
+    expect(strict.err).toMatch(/is missing \(run with --prune/);
+
+    const pruned = debate(["--check", "--dir", planDir, "--prune"]);
+    expect(pruned.code).toBe(0);
+    expect(pruned.out).toMatch(/pruned .*dropped/);
+    expect(Object.keys(parseLock(await readText(lockPathFor(planDir))).plans)).toEqual([]);
+    expect(debate(["--check", "--dir", planDir]).code).toBe(0);
+  });
+});

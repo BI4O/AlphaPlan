@@ -14,6 +14,8 @@ bun install
 bun run debate             # 读 Chainlink feed + 金库 → bull/bear/risk 辩论 → judge 裁决 → plans/<planId>.json
 bun run debate --offline   # 不联网、不调 LLM，输出固定样例（断网兜底）
 bun run debate --check     # 校验已提交的计划：schema + 字节 + 往返 + prompt 哈希 + 封印
+bun run debate --check --prune   # 同上，并删掉"文件已被有意删除"的封印条目
+bun run serve:plans        # 计划文件的静态 HTTP 服务（CRE 的 QuickJS 没有 fs，必须走 HTTP）
 bun run debate --help      # 全部参数
 bun test                   # 77 个测试（schema 边界、字节规则、LLM 请求体、CLI 行为、模板哈希）
 bun run typecheck          # bun check
@@ -75,6 +77,35 @@ src/
 └── fixtures.ts  # 测试用计划样例
 prompts/         # bull / bear / risk / judge 四份模板，**必须提交**（否则 promptTemplateSha 无法复算）
 plans/           # 计划文件 + plans.lock.json，提交进 Git —— 它们是证据
+                 # 目前只留两份：03:00:00Z（固定 degraded 样例）+ 06:25:34Z（唯一上链的那份）
+```
+
+## 计划文件服务（`serve:plans`）
+
+CRE 的 QuickJS 没有 `fs`，所以计划文件必须通过 HTTP 取；这个脚本是 demo 阶段
+对象存储/IPFS 的替身（README §9.7）——同样的字节，同样的哈希，只是从磁盘发。
+
+| 端点 | 用途 |
+|---|---|
+| `GET /latest.json` | **最新且可上报**的那份计划；cre config 指这个，重新生成计划后不用改配置 |
+| `GET /plans.json` | 调试清单：每份计划的 planId / 哈希 / 是否被选中 / 不选它的原因 |
+| `GET /<planId>.json` | 指定某一份（需要固定版本时用） |
+| `GET /health` | 存活检查 |
+
+`/latest.json` 的 "latest" 是**写死定义**的，按 planId 倒序取第一份同时满足：
+
+1. `degraded === false` —— workflow 会拒绝 degraded 计划，取错只会得到一条看起来像 bug 的拒绝日志
+2. `age = chainNow - asOf <= MAX_PLAN_AGE (3600s)`
+3. `validUntil = asOf + validitySeconds > chainNow`
+
+时间用的是**链上块时间**（和 `asOf` 同源），不是墙钟。三条都不满足返回 404 并列出每份的拒绝原因；
+链连不上返回 503 —— 无法判断是否过期时不猜。
+
+响应带 `x-plan-file` / `x-plan-keccak` 头，方便和 `cast keccak` 对照。
+
+```bash
+curl -sD - -o /dev/null http://127.0.0.1:8788/latest.json | grep -i x-plan
+curl -s http://127.0.0.1:8788/plans.json | head -40
 ```
 
 ## 四条硬规则

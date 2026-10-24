@@ -45,6 +45,14 @@ const vaultAbi = parseAbi([
 
 export type MarketSnapshot = {
   input: MarketInput;
+  /**
+   * The chain's own clock at read time (block.timestamp), which is the only
+   * correct "now" here. On a fork without automine the head block's timestamp
+   * freezes between transactions and drifts behind the wall clock by hundreds
+   * of seconds, so Date.now() would make every fresh plan look like it came
+   * from the future.
+   */
+  chainNow: number;
   degraded: boolean;
   /** Why this run is degraded, in the operator's words. Surfaced on stderr. */
   notes: string[];
@@ -55,6 +63,7 @@ export type MarketOptions = {
   vaultAddress?: `0x${string}`;
   /** Directory for the fallback price cache; "" disables it. */
   cacheDir?: string;
+  /** Test seam / explicit override: pin "now" instead of reading the head block. */
   now?: number;
   /** Test seam: returns the latest feed price in whole USD. */
   readFeed?: (address: `0x${string}`, label: string) => Promise<number>;
@@ -204,13 +213,26 @@ export function pctChange(from: number | undefined, to: number): number | undefi
   return round4(((to - from) / from) * 100);
 }
 
+/**
+ * Head-block timestamp. The single time source for the backend: feed freshness,
+ * the 24h reference point, and the plan's own asOf all have to agree with the
+ * chain, because the vault's onReport checks asOf/validUntil against
+ * block.timestamp.
+ */
+export async function readChainTime(rpcUrl = DEFAULT_RPC): Promise<number> {
+  const block = await client(rpcUrl).getBlock({ blockTag: "latest" });
+  return Number(block.timestamp);
+}
+
 export async function readMarket(options: MarketOptions = {}): Promise<MarketSnapshot> {
-  const now = options.now ?? Math.floor(Date.now() / 1000);
   const rpcUrl = options.rpcUrl ?? DEFAULT_RPC;
+  const now = options.now ?? (await readChainTime(rpcUrl));
   const notes: string[] = [];
   let degraded = false;
 
-  const readFeed = options.readFeed ?? ((address: `0x${string}`, label: string) => readLatestRound(rpcUrl, address, label, now).then((r) => r.price));
+  const readFeed =
+    options.readFeed ??
+    ((address: `0x${string}`, label: string) => readLatestRound(rpcUrl, address, label, now).then((r) => r.price));
   const ethUsd = round2(await readFeed(ETH_USD_FEED, "ETH/USD"));
   const btcUsd = round2(await readFeed(BTC_USD_FEED, "BTC/USD"));
 
@@ -271,6 +293,7 @@ export async function readMarket(options: MarketOptions = {}): Promise<MarketSna
 
   return {
     input: { ethUsd, ethUsd24hPct, btcUsd, btcUsd24hPct, vault: { navUsdc, wethBps } },
+    chainNow: now,
     degraded,
     notes,
   };

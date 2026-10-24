@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T06:25:34Z",
+  "asOf": 1792823134,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 19.9907,
+      "wethBps": 1496
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 2800,
+      "confidence": 0.6,
+      "reason": "ETH is up 5.26% over 24h while BTC is down 2.82%, an 8-point divergence that signals capital rotating into ETH, so scaling from the current 1496 bps toward 2800 bps is warranted. Conviction is moderate rather than high because a single day's momentum is a thin signal and the ~$20 NAV limits how much slippage this vault can absorb."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 1200,
+      "confidence": 0.62,
+      "reason": "ETH is up 5.26% while BTC is down 2.82%, a divergence that argues against treating the move as broad risk-on strength; trimming WETH from 1496 bps to 1200 bps reduces exposure while respecting the vault's current 14.96% allocation."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 1300,
+      "confidence": 0.62,
+      "reason": "ETH's 5.26% 24h move against BTC's -2.82% signals elevated dispersion and gap risk, so I'd trim the current 1496 bps WETH exposure rather than add. With navUsdc at only ~$20, redemptions can't be absorbed by depth, so keeping ~87% in cash preserves the vault's ability to pay out if we're wrong."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 1300,
+    "confidence": 0.62,
+    "rationale": "The bull's rotation argument is only one-day momentum, so I discount it; bear and risk both favor trimming and have equal confidence, and the tie-break favors risk, so I adopt 1300 bps instead of the ~1767 raw average."
+  }
+}
