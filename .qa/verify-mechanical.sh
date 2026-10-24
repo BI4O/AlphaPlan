@@ -303,6 +303,47 @@ PY2
   echo "        demo env: VAULT=$VAULT  RPC=$RPC_URL  deployBlock=$(grep -E '^DEPLOY_BLOCK=' "$ENVF" | cut -d= -f2)"
 fi
 
+hdr "E6c-d. 前端 getLogs 必须分块（anvil fork 上游硬限 200 块）"
+HIST=$FE/lib/history.ts
+ENVF2=/tmp/alphaplan-demo-env
+if [[ ! -f "$HIST" ]]; then
+  skip E6c-d "无 lib/history.ts"
+else
+  # 1) 代码里是否有分块循环
+  if grep -qE 'CHUNK|chunk|for *\(.*fromBlock.*toBlock|PAGE_SIZE' "$HIST"; then
+    ok E6c-d1 "history.ts 有分块循环"
+  else
+    bad E6c-d1 "history.ts 未分块：一次性 getLogs(deployBlock→latest)，跨度 >200 时上游必拒（error -32614）"
+  fi
+  # 2) 区间过大与网络错误是否分开报
+  if grep -qiE 'limited to|32614|range' "$HIST"; then
+    ok E6c-d2 "区分了「区间过大」错误"
+  else
+    bad E6c-d2 "未区分「区间过大」与网络错误 —— 代码问题会被伪装成环境问题"
+  fi
+  # 3) 真打一次大跨度 getLogs，看 RPC 会不会拒（用部署块→latest）
+  if [[ -f "$ENVF2" ]]; then
+    eval "$(grep -E '^(VAULT|RPC_URL|DEPLOY_BLOCK)=' "$ENVF2")"
+    N=$(cast block-number --rpc-url "$RPC_URL" 2>/dev/null)
+    if [[ -n "$N" && -n "${DEPLOY_BLOCK:-}" ]]; then
+      SPAN=$((N - DEPLOY_BLOCK))
+      # 关键：跨度小时它本来就会通过，所以「现在能过」不等于代码对。
+      # 判据要能回答"环境跑久了会不会红"：直接测 300 块（>上游 200 限），
+      # 这才反映真实上限，与当前 deployBlock 无关。
+      PROBE_FROM=$((N - 300))
+      if cast logs --address "$VAULT" --from-block "$PROBE_FROM" --to-block "$N" --json --rpc-url "$RPC_URL" >/dev/null 2>&1; then
+        ok E6c-d3 "探测 300 块跨度未被拒（上游限制 >300？实测异常，需人工确认）"
+      else
+        bad E6c-d3 "300 块跨度被拒 → 上游硬限 200；当前 span=${SPAN} 块，超过 200 后页面必然空白"
+      fi
+      # 单独报告：演示可用倒计时（span 距 200 还有多少块）
+      if [[ "$SPAN" -lt 200 ]]; then
+        printf '        注：当前 span=%s 块 < 200，暂时能跑；但 anvil 只增不减，到 200 块就会空白（约 %s 个空块后）\n' "$SPAN" "$((200 - SPAN))"
+      fi
+    fi
+  fi
+fi
+
 hdr "D/E. 前端 (src/frontend/alpha-plan)"
 if grep -q 'Get started by editing' $FE/app/page.tsx 2>/dev/null; then
   bad E1 "app/page.tsx 仍是 Next 默认模板"
