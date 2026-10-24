@@ -1306,7 +1306,8 @@ E 线的三个真问题（哈希显示不一致、浮点未格式化、裸钱包
 所以补这一层：用 `ego-browser` 读 `document.body.innerText`，判文案与格式，**不判像素**。
 
 ```bash
-ego-browser nodejs -e "await import('file:///Users/bi4o/Desktop/MyProjects/SuperBi4o/.qa/render-gate.mjs')"
+# 用 $PWD 而不是写死绝对路径 —— 换机器、换目录都要能跑
+ego-browser nodejs -e "await import('file://' + process.env.PWD + '/.qa/render-gate.mjs')"
 ```
 
 | # | 判据 | 抓什么 |

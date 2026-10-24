@@ -241,6 +241,39 @@ else
   echo "       keccak=$(cast keccak 0x$(xxd -p -c 1000000 "$PL" | tr -d '\n'))"
 fi
 
+hdr "B12. prompt 归档：文件名必须等于内容 keccak"
+ARCH=$BE/prompts/archive
+if [[ ! -d "$ARCH" ]]; then
+  bad B12 "无 prompts/archive/ —— prompt 追溯链未建立"
+else
+  TOTAL=0; BAD=0; BADLIST=""
+  for f in "$ARCH"/*.txt; do
+    [[ -e "$f" ]] || continue
+    TOTAL=$((TOTAL+1))
+    NAME=$(basename "$f" .txt)
+    ACT=$(cast keccak 0x$(xxd -p -c 1000000 "$f" | tr -d '\n') 2>/dev/null)
+    if [[ "$NAME" != "$ACT" ]]; then
+      BAD=$((BAD+1)); BADLIST+="$(basename "$f") "
+    fi
+  done
+  if [[ $TOTAL -eq 0 ]]; then
+    bad B12 "archive/ 为空"
+  elif [[ $BAD -eq 0 ]]; then
+    ok B12 "prompt 归档 ${TOTAL} 份，文件名 == 内容 keccak"
+  else
+    bad B12 "${BAD}/${TOTAL} 份归档文件名与内容哈希不符：${BADLIST}"
+  fi
+  # 当前 prompts 是否都已归档（否则下次改 prompt 就断链）
+  MISSING=""
+  for n in bull bear risk judge; do
+    f=$BE/prompts/$n.txt
+    [[ -f "$f" ]] || continue
+    H=$(cast keccak 0x$(xxd -p -c 1000000 "$f" | tr -d '\n') 2>/dev/null)
+    [[ -f "$ARCH/$H.txt" ]] || MISSING+="$n "
+  done
+  [[ -z "$MISSING" ]] && ok B12b "当前 4 份 prompt 均已归档" || bad B12b "未归档的当前 prompt：${MISSING}（改 prompt 后会断链）"
+fi
+
 hdr "C. CRE (src/backend/cre)"
 if [[ ! -f $CR/project.yaml ]]; then
   skip C1-C10 "cre/ 不存在"
