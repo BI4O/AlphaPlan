@@ -87,19 +87,39 @@ CRE 的 QuickJS 没有 `fs`，所以计划文件必须通过 HTTP 取；这个�
 
 | 端点 | 用途 |
 |---|---|
-| `GET /latest.json` | **最新且可上报**的那份计划；cre config 指这个，重新生成计划后不用改配置 |
+| `GET /latest.json` | **链上最后执行的那份**计划（其次才是"最新可上报"的那份）；cre config 指这个 |
 | `GET /plans.json` | 调试清单：每份计划的 planId / 哈希 / 是否被选中 / 不选它的原因 |
 | `GET /<planId>.json` | 指定某一份（需要固定版本时用） |
 | `GET /health` | 存活检查 |
 
-`/latest.json` 的 "latest" 是**写死定义**的，按 planId 倒序取第一份同时满足：
+`/latest.json` 的 "latest" 是**写死定义**的，分两级：
+
+**第 1 优先：链上最后执行的那份。** 读 `vault.lastPlan().lastPlanHash`，在 `plans/` 里找
+`keccak256(原始字节)` 与之相等的文件，找到就返回它。
+
+为什么这一级必须在最前面：`plans/` 是**证据目录**，不是数据源。目录里最新的文件不等于链上
+最新的决策 —— 若返回了更新的本地文件，前端的哈希徽章会显示"不一致"，而那只是取错文件的
+记账错误，不是链上被篡改。
+
+**第 2 优先（空环境，或那份文件不在本目录）：** 按 planId 倒序取第一份同时满足
 
 1. `degraded === false` —— workflow 会拒绝 degraded 计划，取错只会得到一条看起来像 bug 的拒绝日志
 2. `age = chainNow - asOf <= MAX_PLAN_AGE (3600s)`
 3. `validUntil = asOf + validitySeconds > chainNow`
 
-时间用的是**链上块时间**（和 `asOf` 同源），不是墙钟。三条都不满足返回 404 并列出每份的拒绝原因；
-链连不上返回 503 —— 无法判断是否过期时不猜。
+时间用的是**链上块时间**（和 `asOf` 同源），不是墙钟。两级都不满足返回 404 并列出每份的
+拒绝原因与 `onchainLastPlanHash`；链连不上返回 503 —— 无法判断是否过期时不猜。
+
+`/plans.json` 每份计划带 `onchainMatch`（keccak 是否等于链上 lastPlanHash）、
+`onchainNonce`（链上记录的 nonce，未执行为 null）、`onchainExecutions`（该哈希被上报的次数），
+以及 `latestReason`（`onchain` | `newest-reportable`）—— 前端据此区分
+「链上执行的计划」与「本地最新的计划」，不要混在一格显示。
+
+启动时必须给 `VAULT_ADDRESS`（第 1 优先依赖它），否则拒绝启动而不是悄悄退化成"取最新文件"：
+
+```bash
+VAULT_ADDRESS=0x8f7a… DEPLOY_BLOCK=49513273 bun run serve:plans
+```
 
 响应带 `x-plan-file` / `x-plan-keccak` 头，方便和 `cast keccak` 对照。
 

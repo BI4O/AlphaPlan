@@ -19,6 +19,9 @@
 > 我把 11:58 的编译错误报成 12:10 的结论，而文件在 12:00–12:02 已修好 —— 工人差点去修一个不存在的错。
 > 快照一律标注采集时间；`FAIL` 不带当次输出 = 无效。
 >
+> **v2.19（15:02 采集）**：E4 修好（两格分开）；**E3 仍 FAIL** —— 同一页里辩论卡读 06:50:32Z、哈希卡读 06:49:13Z（§2.22）；
+> 我自己的第 9 例：`textContent` 不穿透嵌套 shadowRoot，误报 modal 为空（已改递归探测）。
+>
 > **v2.18（14:55 采集）**：D7 反重放两条实测通过（`BadNonce(2,1)` / `PlanAlreadyExecuted`，状态无残留）；
 > E6b/E6c-1 PASS；**E3/E4 FAIL 根因是环境里有两份计划文件**（§2.21，P2 数据卫生问题，不是前端 bug）。
 >
@@ -819,6 +822,81 @@ probe 文件不该进仓库。若 PM 决定保留，则加排除的同时必须�
 #### 渲染闸门 R3 现在正确报 FAIL
 
 抓到「不一致」即 FAIL —— **说明上一轮修的三态判定生效了**（以前这里会假绿 PASS）。
+
+### 2.22 E4 修好；E3 仍 FAIL（同一页里两处数据源分叉）；我自己的第 9 例
+
+#### 我的第 9 例：`textContent` 不穿透嵌套 shadow root
+
+PM 指出 modal 不是空的。我按他给的方法改成**递归 shadowRoot 到叶子**（只看 `children.length === 0`），
+读到了 6 个钱包：`Connect Wallet / WalletConnect / qr code / MetaMask / installed / Trust Wallet / Binance Wallet`。
+
+**上一版用 `element.textContent` —— 它不穿透嵌套 shadow root，拿到空字符串，于是误报「modal 为空」。**
+这与前 8 例同类：**判据的观测方法本身有缺陷**，不是被观测对象有缺陷。
+
+已改成递归探测并加入渲染闸门 `Rm`（先点开 modal → 递归读叶子 → 读完移除避免污染后续抓取）。
+**此后不再报 modal 为空。**
+
+#### 后端 onchain 优先：独立核实通过
+
+```
+/latest.json → planId = 2026-10-24T06:49:13Z,  latestReason = "onchain"
+/plans.json:
+  06:50:32Z  target=0     bytes=2503  match=false nonce=null execs=0  selectable=true
+  06:49:13Z  target=1000  bytes=2420  match=true  nonce=1    execs=1  selectable=true
+  06:25:34Z  target=1300  bytes=2422  match=false                    selectable=false
+  03:00:00Z  target=3200  bytes=1679  match=false                    selectable=false
+```
+
+计划真值（自己算）：`rounds=[4000,1000,1000]` → 均值 2000，judge 1000 → **−1000 bps**
+
+#### E4 PASS：两格分开了
+
+```
+链上最后执行的计划
+  ✓ 文件在本地，逐位一致
+  planId 2026-10-24T06:49:13Z / 2420 B
+  keccak 0x2b91f9d0…2984ae3a
+  来源 · vault.lastPlanHash → 反查 plans/
+本地最新的计划
+  ⚠ 尚未上链（与 lastPlanHash 不同）
+  planId 2026-10-24T06:50:32Z / 2503 B
+```
+
+总览卡副标题也对：`0x2b91f9…ae3a · 2420 B · 另有 06:50:32 未上链`。
+**2503B 不再配 0x2b91f9。**
+
+#### E3 仍 FAIL：同一屏里两个数据源
+
+```
+本轮裁决    0 bps        ← 应为 1000
+较算术均值  -1500 bps     ← 应为 -1000
+辩论屏      bull 4,000 / bear 500 / risk 0   ← 这是 06:50:32Z 的数据
+文案        「三个 agent 的目标仓位相差 4000 bps。裁决落在 0 bps，比算术均值 低 1500 bps」
+```
+
+**矛盾很明确**：同一屏里哈希卡读 `06:49:13Z`（正确），辩论卡读 `06:50:32Z`。
+
+根因（读代码确认）：
+
+```
+lib/debate.ts:64        readDebate() 调用 readLatestPlan()
+lib/plan-file.ts:46-65  readLatestPlan() 仍是 readdir + sort + reverse（取 planId 最大）
+→ 前端没有接后端新的 /latest.json（onchain 优先）
+→ E4 屏正确是因为它另走了一条「按 keccak 反查」的路径，没走 readLatestPlan
+```
+
+**建议一句话**：`readLatestPlan()` 改成调 `/latest.json`（或复用同一条 onchain 优先逻辑），
+`readDebate()` 自动就对。**不要在两处各维护一份"哪份是最新"的判断** —— 那正是这次分叉的原因。
+
+#### 渲染闸门现状
+
+```
+PASS R1a / R1b / R2 / R3（哈希自验真的「一致」了）/ Rm（模态 6 个钱包）
+SKIP R4 / R5 / R6（钱包未连接）
+汇总 PASS 5 / FAIL 0 / SKIP 3
+```
+
+R3 从 FAIL 变 PASS —— 页面侧的哈希自验确实修好了。E3 的问题不在哈希，在**辩论数据源**。
 
 ## A. 合约（P1）—— `src/contract`
 

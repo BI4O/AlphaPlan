@@ -1,0 +1,53 @@
+{
+  "planId": "2026-10-24T06:50:32Z",
+  "asOf": 1792824632,
+  "validitySeconds": 900,
+  "degraded": false,
+  "input": {
+    "ethUsd": 3696.39,
+    "ethUsd24hPct": 5.2632,
+    "btcUsd": 80788.48,
+    "btcUsd24hPct": -2.8183,
+    "vault": {
+      "navUsdc": 20,
+      "wethBps": 0
+    }
+  },
+  "rounds": [
+    {
+      "agent": "bull",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0xceb2a196bb23d0116cc8f56d3664d310e5aa9725998624ff655b7086fc28b1f7",
+      "temperature": 0,
+      "targetWethBps": 4000,
+      "confidence": 0.7,
+      "reason": "ETH is up 5.26% over 24h while BTC is down 2.82%, a strong relative-strength signal that justifies moving from 0 bps to a substantial WETH allocation. With vault NAV at $20, a 40% target captures upside while staying well below the 60% cap."
+    },
+    {
+      "agent": "bear",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x3497e792e2d5922b1dc5d267ab881412558438cb17779270b2a8a0c8c41d3ccd",
+      "temperature": 0,
+      "targetWethBps": 500,
+      "confidence": 0.62,
+      "reason": "ETH's 5.26% surge to $3,696 against BTC's -2.82% slide to $80,788 is a sharp divergence that tends to mean-revert, so chasing the rally is unattractive; the vault is already fully in cash at 0 bps on a $20 NAV, warranting only a token ~5% position rather than adding risk here."
+    },
+    {
+      "agent": "risk",
+      "model": "deepseek-flash",
+      "promptTemplateSha": "0x2854e9da2c5c7251d69bfadb47c7109fecaa5c5ebcee54bc8cb85f112742ef66",
+      "temperature": 0,
+      "targetWethBps": 0,
+      "confidence": 0.82,
+      "reason": "ETH is up 5.26% in 24h while BTC is down 2.82%, signaling elevated volatility and divergence; with vault NAV only $20 and current WETH allocation at 0 bps, preserving cash best limits drawdown and redemption risk. Keeping WETH at 0 bps avoids exposing this small vault to sharp reversals without any liquidity buffer concern."
+    }
+  ],
+  "final": {
+    "model": "deepseek-v4-pro",
+    "promptTemplateSha": "0xd37d3c2b09ea95b65db915969b4fd246da5ab91a084506eb5cccd30cad76ff3e",
+    "temperature": 0,
+    "targetWethBps": 0,
+    "confidence": 0.82,
+    "rationale": "Given the $20 vault NAV and the sharp ETH/BTC divergence, the risk agent's high-confidence capital-preservation case is strongest, and the bull's 40% target overweights a single day of relative strength, so I discount it heavily. I therefore keep the target at 0 bps rather than the raw confidence-weighted mean of about 1453 bps."
+  }
+}

@@ -21,7 +21,7 @@
  * `cast keccak` sees on disk.
  */
 import { keccakOf } from "./canonical.ts";
-import { readChainTime } from "./market.ts";
+import { readChainState, readExecutions, ZERO_HASH, type ChainState, type PlanExecution } from "./chain.ts";
 import { MAX_PLAN_AGE_SECONDS, planSchema } from "./schema.ts";
 
 const PLAN_FILE = /^[A-Za-z0-9._:@+-]+\.json$/;
@@ -43,13 +43,31 @@ export type PlanSummary = {
   rejectedBecause: string[];
   /** Caveats that do not block selection but matter to the operator. */
   notes: string[];
+  /** keccak(file) == vault.lastPlan().lastPlanHash — this is the executed plan. */
+  onchainMatch: boolean;
+  /** The nonce the vault recorded for this plan, or null if it never ran. */
+  onchainNonce: number | null;
+  /** How many times the vault reported this exact planHash (should be 0 or 1). */
+  onchainExecutions: number;
 };
 
 export type LatestSelection = {
   chainNow: number;
   chosen?: PlanSummary;
+  /**
+   * Why `chosen` was chosen. `onchain` means it is the plan the vault last
+   * executed; `newest-reportable` means there was nothing onchain to match and
+   * the three time/degraded conditions picked a local file.
+   */
+  reason?: "onchain" | "newest-reportable";
   /** Every plan, newest first, with its own verdict. */
   considered: PlanSummary[];
+};
+
+/** What the server knows about the chain; both reads are optional for tests. */
+export type ChainContext = {
+  state: ChainState;
+  executions: PlanExecution[];
 };
 
 type RawPlan = {
@@ -112,7 +130,7 @@ async function readPlans(dir: string): Promise<{ plans: RawPlan[]; errors: strin
  * They are deliberately strict: a plan that fails any of them cannot be
  * reported, so handing it to the workflow only produces a confusing refusal.
  */
-function summarise(plan: RawPlan, chainNow: number): PlanSummary {
+function summarise(plan: RawPlan, chainNow: number, context?: ChainContext): PlanSummary {
   const validUntil = plan.asOf + plan.validitySeconds;
   const ageSeconds = chainNow - plan.asOf;
   const rejectedBecause: string[] = [];
@@ -139,6 +157,15 @@ function summarise(plan: RawPlan, chainNow: number): PlanSummary {
     notes.push(`asOf is ${-ageSeconds}s in the future; the vault rejects a future asOf (PlanFromFuture)`);
   }
 
+  const keccak256 = keccakOf(plan.bytes);
+  const execution = context?.executions.find(
+    (candidate) => candidate.planHash.toLowerCase() === keccak256.toLowerCase(),
+  );
+  const onchainMatch =
+    context !== undefined &&
+    context.state.lastPlanHash.toLowerCase() !== ZERO_HASH &&
+    context.state.lastPlanHash.toLowerCase() === keccak256.toLowerCase();
+
   return {
     file: plan.file,
     planId: plan.planId,
@@ -148,11 +175,14 @@ function summarise(plan: RawPlan, chainNow: number): PlanSummary {
     degraded: plan.degraded,
     targetWethBps: plan.targetWethBps,
     bytes: plan.bytes.length,
-    keccak256: keccakOf(plan.bytes),
+    keccak256,
     ageSeconds,
     selectable: rejectedBecause.length === 0,
     rejectedBecause,
     notes,
+    onchainMatch,
+    onchainNonce: execution?.nonce ?? null,
+    onchainExecutions: context?.executions.filter((candidate) => candidate.planHash.toLowerCase() === keccak256.toLowerCase()).length ?? 0,
   };
 }
 
@@ -163,10 +193,22 @@ function summarise(plan: RawPlan, chainNow: number): PlanSummary {
  * caller: planId is a zero-padded UTC timestamp, so descending string order is
  * descending time. Sorting by filename would scramble non-ISO names.
  */
-export function pickLatest(plans: RawPlan[], chainNow: number): LatestSelection {
+export function pickLatest(plans: RawPlan[], chainNow: number, context?: ChainContext): LatestSelection {
   const ordered = [...plans].sort((a, b) => (a.planId < b.planId ? 1 : a.planId > b.planId ? -1 : 0));
-  const considered = ordered.map((plan) => summarise(plan, chainNow));
-  return { chainNow, chosen: considered.find((entry) => entry.selectable), considered };
+  const considered = ordered.map((plan) => summarise(plan, chainNow, context));
+
+  // Priority 1: the plan the vault actually executed. `plans/` is an evidence
+  // directory, not a data feed — the newest *file* and the newest *decision*
+  // are different questions, and only the chain can answer the second one.
+  // Serving the newest file while the chain points elsewhere makes the
+  // frontend's hash badge show a mismatch that is really a bookkeeping error.
+  const onchain = considered.find((entry) => entry.onchainMatch);
+  if (onchain) return { chainNow, chosen: onchain, reason: "onchain", considered };
+
+  // Priority 2 (empty environment, or the executed file is not in this
+  // directory): fall back to the newest file that is actually reportable.
+  const reportable = considered.find((entry) => entry.selectable);
+  return { chainNow, chosen: reportable, reason: reportable ? "newest-reportable" : undefined, considered };
 }
 
 const jsonHeaders = { "content-type": "application/json", "cache-control": "no-store" };
@@ -175,12 +217,15 @@ const json = (value: unknown, status = 200) =>
 
 export type HandlerOptions = {
   dir: string;
-  /** Injectable so tests do not need a chain; production reads the head block. */
-  chainNow: () => Promise<number>;
+  /**
+   * The chain context: head timestamp plus the vault's own record of its last
+   * executed plan. Injectable so tests need no chain; production reads 8545.
+   */
+  readChain: () => Promise<ChainContext>;
 };
 
 /** Build the fetch handler. Exported so tests can drive it without a socket. */
-export function makeHandler({ dir, chainNow }: HandlerOptions) {
+export function makeHandler({ dir, readChain }: HandlerOptions) {
   return async function fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
 
@@ -190,25 +235,35 @@ export function makeHandler({ dir, chainNow }: HandlerOptions) {
 
     // ---- debug view: why did /latest.json choose what it chose? ----
     if (pathname === "/plans.json") {
-      let now: number;
+      let context: ChainContext;
       try {
-        now = await chainNow();
+        context = await readChain();
       } catch (error) {
         return json(
           {
-            error: "chain clock unavailable — cannot evaluate validity",
+            error: "chain unavailable — cannot evaluate validity or the onchain record",
             detail: error instanceof Error ? error.message : String(error),
             plans: errors,
           },
           503,
         );
       }
-      const selection = pickLatest(plans, now);
+
+      const selection = pickLatest(plans, context.state.chainNow, context);
       return json({
         chainNow: selection.chainNow,
         latest: selection.chosen?.file ?? null,
+        latestReason: selection.reason ?? null,
+        onchain: {
+          lastPlanHash: context.state.lastPlanHash,
+          lastTargetWethBps: context.state.lastTargetWethBps,
+          lastNonce: context.state.lastNonce,
+          executions: context.executions.length,
+        },
         maxPlanAgeSeconds: MAX_PLAN_AGE_SECONDS,
         plans: selection.considered,
+        // Which files cannot be the executed plan, and why that is fine.
+        unmatchedOnchain: selection.considered.filter((entry) => !entry.onchainMatch).map((entry) => entry.file),
         errors,
       });
     }
@@ -218,33 +273,37 @@ export function makeHandler({ dir, chainNow }: HandlerOptions) {
         return json({ error: "no plan files", detail: errors.length > 0 ? errors : `nothing in ${dir}` }, 404);
       }
 
-      let now: number;
+      let context: ChainContext;
       try {
-        now = await chainNow();
+        context = await readChain();
       } catch (error) {
         // Fail closed: without the chain clock, "not expired" cannot be
-        // established, and guessing with the wall clock would serve a plan the
-        // vault rejects.
+        // established, and without lastPlanHash the executed plan cannot be
+        // identified. Guessing with the wall clock would serve a plan the vault
+        // rejects, or a local file the chain has never seen.
         return json(
           {
-            error: "chain clock unavailable — cannot evaluate validity",
+            error: "chain unavailable — cannot evaluate validity or the onchain record",
             detail: error instanceof Error ? error.message : String(error),
           },
           503,
         );
       }
 
-      const selection = pickLatest(plans, now);
+      const now = context.state.chainNow;
+      const selection = pickLatest(plans, now, context);
       if (!selection.chosen) {
         return json(
           {
             error: "no plan is currently reportable",
             chainNow: now,
-            conditions: [
+            priority1: "a file whose keccak == vault.lastPlan().lastPlanHash",
+            priority2: [
               "degraded === false",
               `age <= MAX_PLAN_AGE (${MAX_PLAN_AGE_SECONDS}s)`,
               "validUntil > chain now",
             ],
+            onchainLastPlanHash: context.state.lastPlanHash,
             rejected: selection.considered.map((entry) => ({
               file: entry.file,
               reasons: entry.rejectedBecause,
@@ -284,14 +343,28 @@ const port = Number(process.env.PLANS_PORT ?? 8788);
 
 if (import.meta.main) {
   const rpcUrl = process.env.RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
-  const server = Bun.serve({
-    hostname: host,
-    port,
-    fetch: makeHandler({ dir, chainNow: () => readChainTime(rpcUrl) }),
-  });
+  const vault = process.env.VAULT_ADDRESS as `0x${string}` | undefined;
+  const deployBlock = process.env.DEPLOY_BLOCK ? Number(process.env.DEPLOY_BLOCK) : undefined;
+
+  if (!vault) {
+    // Without the vault there is no lastPlanHash, which is priority 1 — the
+    // server would silently degrade to "newest file", the exact behaviour this
+    // endpoint exists to stop. Refuse to start rather than mislead.
+    console.error("serve:plans: VAULT_ADDRESS is required (used to read lastPlan/planUsed)");
+    process.exit(1);
+  }
+
+  const readChain = async (): Promise<ChainContext> => {
+    const state = await readChainState(vault, rpcUrl);
+    const { executions } = await readExecutions(vault, rpcUrl, { deployBlock });
+    return { state, executions };
+  };
+
+  const server = Bun.serve({ hostname: host, port, fetch: makeHandler({ dir, readChain }) });
 
   console.log(`serve:plans  ${dir}/  →  http://${host}:${server.port}/`);
-  console.log(`  /latest.json   newest reportable plan (degraded:false, age<=3600s, validUntil>chain now)`);
-  console.log(`  /plans.json    why that one was chosen`);
-  console.log(`  /<planId>.json one specific plan`);
+  console.log(`  vault ${vault} @ ${rpcUrl}${deployBlock ? ` (from block ${deployBlock})` : ""}`);
+  console.log("  /latest.json   the plan the vault last executed; else newest reportable plan");
+  console.log("  /plans.json    every plan with onchainMatch / onchainNonce, and why latest was chosen");
+  console.log("  /<planId>.json one specific plan");
 }

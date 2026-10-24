@@ -1,5 +1,6 @@
 import { createPublicClient, http, parseAbi } from "viem";
-import { baseSepolia } from "viem/chains";
+import { baseSepolia, } from "viem/chains";
+import { DEFAULT_RPC, readChainTime, vaultAbi } from "./chain.ts";
 import type { MarketInput } from "./schema.ts";
 
 /**
@@ -38,11 +39,6 @@ const aggregatorV3Abi = parseAbi([
   "function getRoundData(uint80 _roundId) view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
 ]);
 
-const vaultAbi = parseAbi([
-  "function totalAssets() view returns (uint256)",
-  "function currentWethBps() view returns (uint16)",
-]);
-
 export type MarketSnapshot = {
   input: MarketInput;
   /**
@@ -68,8 +64,6 @@ export type MarketOptions = {
   /** Test seam: returns the latest feed price in whole USD. */
   readFeed?: (address: `0x${string}`, label: string) => Promise<number>;
 };
-
-const DEFAULT_RPC = process.env.RPC_URL ?? process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
 
 const client = (rpcUrl: string) => createPublicClient({ chain: baseSepolia, transport: http(rpcUrl, { timeout: 15_000 }) });
 
@@ -213,16 +207,7 @@ export function pctChange(from: number | undefined, to: number): number | undefi
   return round4(((to - from) / from) * 100);
 }
 
-/**
- * Head-block timestamp. The single time source for the backend: feed freshness,
- * the 24h reference point, and the plan's own asOf all have to agree with the
- * chain, because the vault's onReport checks asOf/validUntil against
- * block.timestamp.
- */
-export async function readChainTime(rpcUrl = DEFAULT_RPC): Promise<number> {
-  const block = await client(rpcUrl).getBlock({ blockTag: "latest" });
-  return Number(block.timestamp);
-}
+export { readChainTime };
 
 export async function readMarket(options: MarketOptions = {}): Promise<MarketSnapshot> {
   const rpcUrl = options.rpcUrl ?? DEFAULT_RPC;

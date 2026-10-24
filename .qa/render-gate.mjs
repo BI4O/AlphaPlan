@@ -91,6 +91,56 @@ if (ethMatches.length === 0) {
   else bad("R4", `裸显示 ETH 余额且无地址归属：${ethMatches.join(", ")} ETH｜上下文：${ctx.slice(0, 80)}`);
 }
 
+// ---------- R-modal: 连接钱包的模态必须真的有钱包选项 ----------
+// 教训（我自己的第 9 例）：`element.textContent` **不穿透嵌套 shadow root**。
+// 上一版用 textContent 读到空字符串，误报「modal 为空」——
+// 实际 W3M 的钱包列表在 w3m-router 的多层 shadow 里。
+// 正确做法：递归 shadowRoot 到叶子，只看 children.length===0 的元素。
+// 注意：这一步会**点开连接模态**，所以只在顶部按钮存在时执行。
+{
+  const opened = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("button")]
+      .find((e) => e.textContent.trim() === "连接钱包");
+    if (!b) return false;
+    b.click();
+    return true;
+  });
+  if (!opened) {
+    info("Rm", "无「连接钱包」按钮（已连接或未渲染），跳过模态检查");
+  } else {
+    await new Promise((r) => setTimeout(r, 3500));
+    const leaves = await page.evaluate(() => {
+      const seen = new Set(); const out = [];
+      const walk = (root) => {
+        if (!root || seen.has(root)) return;
+        seen.add(root);
+        for (const el of (root.querySelectorAll ? root.querySelectorAll("*") : [])) {
+          if (el.shadowRoot) walk(el.shadowRoot);
+          if (el.children.length === 0) {
+            const t = (el.textContent || "").trim();
+            if (t && t.length < 80) out.push(t);
+          }
+        }
+      };
+      const m = document.querySelector("w3m-modal");
+      if (!m) return null;
+      walk(m.shadowRoot);
+      return [...new Set(out)];
+    });
+    if (leaves === null) {
+      info("Rm", "点开后无 w3m-modal（可能用了别的连接组件）");
+    } else {
+      const KNOWN = /MetaMask|WalletConnect|Trust Wallet|Coinbase|Binance|Rabby|Phantom|installed|Search Wallet/i;
+      const hits = leaves.filter((t) => KNOWN.test(t));
+      if (hits.length >= 2) ok("Rm", `连接模态有钱包选项：${hits.slice(0, 5).join(" / ")}`);
+      else bad("Rm", `连接模态已挂载但无钱包选项（叶子 ${leaves.length} 条）—— 疑似空 modal`);
+      // 收起模态，避免影响后续 text 抓取
+      await page.evaluate(() => { const m = document.querySelector("w3m-modal"); if (m) m.remove(); });
+      await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+}
+
 // ---------- R5/E7a: 连接钱包时必须显示网络标识 ----------
 const netShown = /chainId|31337|84532|Base Sepolia|Base测试网|网络|localChain|本地/i.test(text);
 if (!walletConnected) {
