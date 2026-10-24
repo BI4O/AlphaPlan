@@ -11,8 +11,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 FULL=0; [[ "${1:-}" == "--full" ]] && FULL=1
 
-PASS=0; FAIL=0; SKIP=0; FAILED_ITEMS=()
+PASS=0; FAIL=0; SKIP=0; INFO=0; WARN=0; FAILED_ITEMS=(); WARNED_ITEMS=()
 ok()   { PASS=$((PASS+1)); printf '  \033[32mPASS\033[0m %-7s %s\n' "$1" "$2"; }
+info() { INFO=$((INFO+1)); printf '  \033[36mINFO\033[0m %-7s %s\n' "$1" "$2"; }
+warn() { WARN=$((WARN+1)); WARNED_ITEMS+=("$1: $2"); printf '  \033[33mWARN\033[0m %-7s %s\n' "$1" "$2"; }
 bad()  { FAIL=$((FAIL+1)); FAILED_ITEMS+=("$1: $2"); printf '  \033[31mFAIL\033[0m %-7s %s\n' "$1" "$2"; }
 skip() { SKIP=$((SKIP+1)); printf '  \033[33mSKIP\033[0m %-7s %s\n' "$1" "$2"; }
 hdr()  { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -333,13 +335,27 @@ else
       # 探测的是**会不会被拒**（看 error / 退出码），不是**有没有结果**。
       # 两者必须分开：区间内无事件 → 空数组 + 退出 0（正常）；区间超限 → error + 退出非 0。
       # 实测（14:11）：空结果 exit=0，超限 exit=1，且区间内**确有事件**时仍 exit=1。
+      # d3 测的是**环境上限**（上游 200 块），不是代码正确性 ——
+      # 永远红会变噪音、噪音淹没真问题。所以三档：
+      #   span > 200      → FAIL（此刻历史区就是坏的）
+      #   span 距 200≤50  → WARN（马上要坏，必须看得见）
+      #   其余            → INFO（只报告，不污染失败列表）
+      LIMIT=200; MARGIN=$((LIMIT - SPAN))
+      if [[ "$SPAN" -gt "$LIMIT" ]]; then
+        bad E6c-d3 "span=${SPAN} > ${LIMIT}，历史区此刻已经无法读取"
+      elif [[ "$MARGIN" -le 50 ]]; then
+        warn E6c-d3 "span=${SPAN} 块，距 ${LIMIT} 上限只剩 ${MARGIN} 块 —— 超过后页面历史区会空白"
+      else
+        info E6c-d3 "上游 getLogs 限 ${LIMIT} 块；当前 span=${SPAN} 块（距上限还有 ${MARGIN} 块）"
+      fi
+      # 独立报告"上游真实上限"，与当前 span 无关（防止跨度过小时误判为无限制）
       PROBE_FROM=$((N - 300))
       PROBE_OUT=$(cast logs --address "$VAULT" --from-block "$PROBE_FROM" --to-block "$N" --json --rpc-url "$RPC_URL" 2>&1)
       PROBE_RC=$?
       if [[ $PROBE_RC -ne 0 ]] || echo "$PROBE_OUT" | grep -qiE 'limited to|32614|32603|Fork Error|range'; then
-        bad E6c-d3 "300 块跨度被拒（rc=${PROBE_RC}）→ 上游硬限 200；当前 span=${SPAN} 块，超过 200 后页面必然空白"
+        info E6c-d3b "上游实测硬限 200 块（300 块探测被拒 rc=${PROBE_RC}）—— 与当前 span 无关"
       else
-        ok E6c-d3 "300 块跨度未被拒（rc=0，上游限制 >300，需人工确认）"
+        warn E6c-d3b "300 块探测未被拒（rc=0）—— 上游限制与预期不同，需人工确认"
       fi
       # 单独报告：演示可用倒计时（span 距 200 还有多少块）
       if [[ "$SPAN" -lt 200 ]]; then
@@ -403,7 +419,10 @@ INFO=$(git ls-files -z src 2>/dev/null | xargs -0 grep -cE '0x[0-9a-fA-F]{64}' 2
 [[ "$INFO" -gt 0 ]] && echo "       注：$INFO 个文件含 64-hex 串（绝大多数应为 planHash/promptTemplateSha，人工抽查即可）"
 
 hdr "汇总"
-printf '  PASS %d   FAIL %d   SKIP %d\n' "$PASS" "$FAIL" "$SKIP"
+printf '  PASS %d   FAIL %d   WARN %d   SKIP %d   INFO %d\n' "$PASS" "$FAIL" "$WARN" "$SKIP" "$INFO"
+if [[ $WARN -gt 0 ]]; then
+  printf '\n\033[33m警告项（不算失败，但接近出问题）\033[0m\n'; printf '  ! %s\n' "${WARNED_ITEMS[@]}"
+fi
 if [[ $FAIL -gt 0 ]]; then
   printf '\n\033[31m失败项\033[0m\n'; printf '  - %s\n' "${FAILED_ITEMS[@]}"; exit 1
 fi
